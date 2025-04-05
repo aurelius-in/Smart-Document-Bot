@@ -42,3 +42,42 @@ This project integrates UiPath with a custom FastAPI backend to process document
 cd ai_api
 pip install -r requirements.txt
 uvicorn main:app --reload
+
+### File Directory
+
+```
+Smart-Document-Bot/
+│
+├── README.md
+├── LICENSE
+├── architecture-diagram.png
+├── run-demo.gif
+│
+├── UiPathProject/
+│   ├── Main.xaml
+│   ├── ProcessDocument.xaml
+│   ├── Config.xlsx
+│   ├── project.json
+│   ├── Screenshots/
+│   └── Documentation.pdf
+│
+├── ai_api/
+│   ├── main.py
+│   ├── requirements.txt
+│   ├── model/
+│   │   └── summarizer.py
+│   ├── utils/
+│   │   └── parser.py
+│   └── test_data/
+│       └── sample_text.txt
+│
+├── sample_documents/
+│   └── invoice1.pdf
+│
+├── output/
+│   └── processed_data.xlsx
+│
+└── logs/
+    └── run_log_2025-04-04.txt
+    
+```
