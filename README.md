@@ -17,7 +17,8 @@ An end-to-end automation solution that combines UiPath with AI to extract, summa
 
 ## Architecture
 
-![Architecture Diagram](architecture-diagram.png)
+![Architecture Diagram](run-demo.
+gif)
 
 This project integrates UiPath with a custom FastAPI backend to process documents intelligently. UiPath handles orchestration, file handling, and notifications. FastAPI handles NLP and data extraction.
 
