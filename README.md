@@ -1,5 +1,12 @@
 # Smart Document Processing Bot
 
+> **TL;DR**: This project automates document processing using UiPath, OCR, and AI.  
+> It extracts text from scanned PDFs, summarizes it with a custom API, and outputs structured results.
+
+##$ Non-technical Summary:
+
+Imagine someone drops a stack of medical or financial documents on your desk and asks you to pull out the key details — names, dates, amounts, and a short summary — and then email a clean report. This bot does exactly that, automatically. It watches a folder for new PDFs, reads them like a human using OCR, sends the text to a small AI engine that pulls out the most important info, saves everything to a spreadsheet, and emails the results. No manual work, no errors — just fast, smart automation.
+
 An end-to-end automation solution that combines UiPath with AI to extract, summarize, and process scanned documents. Designed for business workflows that require intelligent document understanding and structured output.
 
 ---
