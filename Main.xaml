@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap" x:Class="Main" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" 
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+ xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities" 
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation" 
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib" 
+ xmlns:ui="http://schemas.uipath.com/workflow/activities" 
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <ui:Sequence DisplayName="Main" sap:VirtualizedContainerService.HintSize="720,480">
+    <ui:WriteLine Text="Smart Document Bot Started..." DisplayName="Log Start"/>
+    <!-- Add logic to invoke ProcessDocument.xaml -->
+    <ui:InvokeWorkflowFile Arguments="{x:Null}" DisplayName="Invoke ProcessDocument" WorkflowFileName="ProcessDocument.xaml"/>
+    <ui:WriteLine Text="Smart Document Bot Finished." DisplayName="Log End"/>
+  </ui:Sequence>
+</Activity>
