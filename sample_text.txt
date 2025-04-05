@@ -1,0 +1,9 @@
+Name: Jane Doe
+Date: 03/15/2025
+Amount: $1,250.75
+
+This document contains details regarding the medical procedure performed on the above date.
+The patient was administered standard treatment and released in good condition. Further recommendations
+are included in the full report.
+
+Thank you for your attention.

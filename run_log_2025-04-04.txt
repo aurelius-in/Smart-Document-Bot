@@ -1,0 +1,8 @@
+[INFO] 2025-04-04 08:00:01 - Bot started.
+[INFO] 2025-04-04 08:00:05 - PDF file detected: invoice1.pdf
+[INFO] 2025-04-04 08:00:06 - OCR extraction completed.
+[INFO] 2025-04-04 08:00:07 - Text sent to AI API for summarization.
+[INFO] 2025-04-04 08:00:08 - Summary received and fields extracted.
+[INFO] 2025-04-04 08:00:09 - Data written to Excel: processed_data.xlsx
+[INFO] 2025-04-04 08:00:10 - Email summary sent to recipient@example.com
+[INFO] 2025-04-04 08:00:11 - Bot finished successfully.
