@@ -9,6 +9,8 @@ Imagine someone drops a stack of medical or financial documents on your desk and
 
 An end-to-end automation solution that combines UiPath with AI to extract, summarize, and process scanned documents. Designed for business workflows that require intelligent document understanding and structured output.
 
+Explore the code, run the demo, or use this template to build your own AI-powered automation. This repo is designed to be understandable, adaptable, and production-ready.
+
 ---
 
 ## Features
@@ -24,7 +26,7 @@ An end-to-end automation solution that combines UiPath with AI to extract, summa
 
 ## Architecture
 
-![Architecture Diagram](run-demo.gif)
+![Architecture Diagram Workflow Animation](run-demo.gif)
 
 This project integrates UiPath with a custom FastAPI backend to process documents intelligently. UiPath handles orchestration, file handling, and notifications. FastAPI handles NLP and data extraction.
 
