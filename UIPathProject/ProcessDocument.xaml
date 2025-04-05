@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap" x:Class="ProcessDocument" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities" 
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+ xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities" 
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation" 
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib" 
+ xmlns:ui="http://schemas.uipath.com/workflow/activities" 
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <ui:Sequence DisplayName="Process Document" sap:VirtualizedContainerService.HintSize="720,480">
+    <ui:WriteLine Text="Starting Document Processing..." DisplayName="Log Start"/>
+    
+    <!-- Simulated OCR Step -->
+    <ui:WriteLine Text="Extracting text using OCR..." DisplayName="OCR Step"/>
+    
+    <!-- Simulated API Call Step -->
+    <ui:WriteLine Text="Calling AI API for summarization..." DisplayName="API Call Step"/>
+    
+    <!-- Simulated Excel Output -->
+    <ui:WriteLine Text="Writing extracted data to Excel..." DisplayName="Excel Output Step"/>
+    
+    <!-- Simulated Email Notification -->
+    <ui:WriteLine Text="Sending summary email..." DisplayName="Email Notification Step"/>
+    
+    <ui:WriteLine Text="Document Processing Completed." DisplayName="Log End"/>
+  </ui:Sequence>
+</Activity>
