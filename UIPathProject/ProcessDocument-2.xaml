@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap" x:Class="ProcessDocument" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+ xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib"
+ xmlns:ui="http://schemas.uipath.com/workflow/activities"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:sd="clr-namespace:System.Data;assembly=System.Data"
+ xmlns:diag="clr-namespace:System.Diagnostics;assembly=System">
+  <ui:Sequence DisplayName="Process Document" sap:VirtualizedContainerService.HintSize="720,480">
+    <ui:TryCatch DisplayName="TryCatch - Full Workflow">
+      <ui:TryCatch.Try>
+        <ui:Sequence DisplayName="Main Workflow">
+          <ui:WriteLine Text="Processing started." DisplayName="Log Start"/>
+
+          <!-- Simulated OCR (replace with Read PDF with OCR) -->
+          <ui:ReadTextFile FileName="sample_documents/invoice1.pdf" Result="extractedText" DisplayName="Extract Text"/>
+
+          <!-- Call AI API -->
+          <ui:HttpClient Endpoint="http://localhost:8000/api/v1/summarize"
+                         Method="POST"
+                         Headers="[new KeyValuePair(Of String, String)("Content-Type", "application/json")]"
+                         Body="{"text":"" + extractedText + ""}"
+                         Result="apiResponse"
+                         DisplayName="Call FastAPI Summarizer"/>
+
+          <!-- Parse JSON -->
+          <ui:DeserializeJson Input="apiResponse" Result="parsedJson" DisplayName="Deserialize API Response"/>
+
+          <!-- Extract JSON fields -->
+          <ui:Assign DisplayName="Extract Name">
+            <ui:Assign.To><x:Reference>name</x:Reference></ui:Assign.To>
+            <ui:Assign.Value><x:CData>parsedJson("fields")("Name").ToString</x:CData></ui:Assign.Value>
+          </ui:Assign>
+
+          <!-- Build and write DataTable -->
+          <ui:BuildDataTable DisplayName="Initialize Table" Result="resultsTable">
+            <ui:BuildDataTable.Columns>
+              <ui:DataColumn Name="Name" />
+              <ui:DataColumn Name="Date" />
+              <ui:DataColumn Name="Amount" />
+              <ui:DataColumn Name="Summary" />
+            </ui:BuildDataTable.Columns>
+          </ui:BuildDataTable>
+
+          <ui:AddDataRow DataTable="resultsTable"
+                         ArrayRow="[parsedJson("fields")("Name").ToString, parsedJson("fields")("Date").ToString, parsedJson("fields")("Amount").ToString, parsedJson("summary").ToString]"
+                         DisplayName="Add Data Row"/>
+
+          <ui:WriteRange FilePath="output/processed_data.xlsx"
+                         DataTable="resultsTable"
+                         SheetName="Sheet1"
+                         DisplayName="Write Excel Output"/>
+
+          <!-- Send Email -->
+          <ui:SendSmtpMailMessage DisplayName="Email Summary"
+                                  To="[Config("EmailRecipient").ToString]"
+                                  Subject="Summary Report"
+                                  Body="Summary:
+" + parsedJson("summary").ToString
+                                  Port="587"
+                                  Host="smtp.example.com"
+                                  Email="[sender@example.com]"
+                                  Password="[securePassword]" />
+
+          <ui:WriteLine Text="Processing completed successfully." DisplayName="Log End"/>
+        </ui:Sequence>
+      </ui:TryCatch.Try>
+      <ui:TryCatch.Catches>
+        <ui:Catch x:TypeArguments="x:String">
+          <ui:Sequence DisplayName="Error Handler">
+            <ui:LogMessage Level="Error" Message="An error occurred during processing." />
+          </ui:Sequence>
+        </ui:Catch>
+      </ui:TryCatch.Catches>
+    </ui:TryCatch>
+  </ui:Sequence>
+</Activity>
