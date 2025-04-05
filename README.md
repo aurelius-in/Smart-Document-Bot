@@ -42,6 +42,7 @@ This project integrates UiPath with a custom FastAPI backend to process document
 cd ai_api
 pip install -r requirements.txt
 uvicorn main:app --reload
+```
 
 ### File Directory
 
