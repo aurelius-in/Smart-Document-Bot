@@ -26,7 +26,7 @@ Explore the code, run the demo, or use this template to build your own AI-powere
 
 ## Architecture
 
-![Architecture Diagram Workflow Animation](run-demo.gif)
+![Workflow Animation](run-demo.gif)
 
 This project integrates UiPath with a custom FastAPI backend to process documents intelligently. UiPath handles orchestration, file handling, and notifications. FastAPI handles NLP and data extraction.
 
