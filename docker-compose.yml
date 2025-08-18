@@ -1,122 +1,145 @@
 version: '3.8'
 
 services:
-  # Redis for caching and short-term memory
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smart-doc-bot-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=8000
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=gpt-4
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/smart_doc_bot
+      - REDIS_URL=redis://redis:6379
+      - CHROMA_PERSIST_DIRECTORY=/app/chroma_db
+      - UPLOAD_DIR=/app/uploads
+      - ENABLE_MONITORING=true
+      - ENABLE_CACHING=true
+      - ENABLE_RATE_LIMITING=true
+      - AUDIT_ENABLED=true
+      - COMPLIANCE_SCAN_ENABLED=true
+    volumes:
+      - ./uploads:/app/uploads
+      - ./chroma_db:/app/chroma_db
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+      - chromadb
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend React Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smart-doc-bot-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_ENVIRONMENT=production
+      - REACT_APP_VERSION=1.0.0
+    depends_on:
+      - backend
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: smart-doc-bot-postgres
+    environment:
+      - POSTGRES_DB=smart_doc_bot
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d smart_doc_bot"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: redline-redis
-    ports:
-      - "6379:6379"
+    container_name: smart-doc-bot-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - redline-network
+      start_period: 40s
 
-  # PostgreSQL with pgvector for vector storage
-  postgres:
-    image: pgvector/pgvector:pg15
-    container_name: redline-postgres
-    environment:
-      POSTGRES_DB: redline
-      POSTGRES_USER: redline_user
-      POSTGRES_PASSWORD: redline_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U redline_user -d redline"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - redline-network
-
-  # ChromaDB for vector database
+  # ChromaDB Vector Database
   chromadb:
     image: chromadb/chroma:latest
-    container_name: redline-chromadb
-    ports:
-      - "8000:8000"
-    volumes:
-      - chromadb_data:/chroma/chroma
+    container_name: smart-doc-bot-chromadb
     environment:
       - CHROMA_SERVER_HOST=0.0.0.0
       - CHROMA_SERVER_HTTP_PORT=8000
       - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["*"]
+      - CHROMA_SERVER_AUTH_CREDENTIALS_FILE=/app/chroma_auth.json
+      - CHROMA_SERVER_AUTH_CREDENTIALS_PROVIDER=chromadb.auth.providers.HtpasswdFileServerAuthProvider
+      - CHROMA_SERVER_AUTH_PROVIDER=chromadb.auth.providers.HtpasswdFileServerAuthProvider
+    volumes:
+      - chromadb_data:/chroma/chroma
+      - ./config/chroma_auth.json:/app/chroma_auth.json
+    ports:
+      - "8001:8000"
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - redline-network
+      start_period: 40s
 
-  # Backend API
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: redline-backend
-    ports:
-      - "8001:8000"
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql://redline_user:redline_password@postgres:5432/redline
-      - CHROMA_PERSIST_DIRECTORY=/app/chroma_db
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-    volumes:
-      - ./backend:/app
-      - ./uploads:/app/uploads
-      - ./chroma_db:/app/chroma_db
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      chromadb:
-        condition: service_healthy
-    networks:
-      - redline-network
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-  # Frontend
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: redline-frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - REACT_APP_API_URL=http://localhost:8001
-      - REACT_APP_WS_URL=ws://localhost:8001
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - backend
-    networks:
-      - redline-network
-    command: npm start
-
-  # Monitoring - Prometheus
+  # Prometheus Metrics Collection
   prometheus:
     image: prom/prometheus:latest
-    container_name: redline-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
+    container_name: smart-doc-bot-prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -124,72 +147,243 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
     networks:
-      - redline-network
+      - smart-doc-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Monitoring - Grafana
+  # Grafana Dashboard
   grafana:
     image: grafana/grafana:latest
-    container_name: redline-grafana
-    ports:
-      - "3001:3000"
+    container_name: smart-doc-bot-grafana
     environment:
+      - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
       - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3001:3000"
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
     depends_on:
       - prometheus
-    networks:
-      - redline-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Document Processing Worker
-  worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.worker
-    container_name: redline-worker
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql://redline_user:redline_password@postgres:5432/redline
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+  # Open Policy Agent (OPA) for Policy Enforcement
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: smart-doc-bot-opa
+    command: run --server --addr :8181 --cors
     volumes:
-      - ./uploads:/app/uploads
-      - ./output:/app/output
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - ./backend/app/risk/policies:/policies
+    ports:
+      - "8181:8181"
     networks:
-      - redline-network
-    command: celery -A app.core.celery worker --loglevel=info
+      - smart-doc-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Elasticsearch for Advanced Logging and Search
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: smart-doc-bot-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Kibana for Log Visualization
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: smart-doc-bot-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Filebeat for Log Collection
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: smart-doc-bot-filebeat
+    user: root
+    volumes:
+      - ./logs:/var/log/smart-doc-bot:ro
+      - ./monitoring/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch
 
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
-    container_name: redline-nginx
+    container_name: smart-doc-bot-nginx
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx/ssl:/etc/nginx/ssl
+      - ./logs/nginx:/var/log/nginx
     depends_on:
-      - frontend
       - backend
+      - frontend
     networks:
-      - redline-network
+      - smart-doc-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Certbot for SSL Certificates
+  certbot:
+    image: certbot/certbot
+    container_name: smart-doc-bot-certbot
+    volumes:
+      - ./nginx/ssl:/etc/letsencrypt
+      - ./nginx/webroot:/var/www/html
+    command: certonly --webroot --webroot-path=/var/www/html --email admin@smartdocbot.com --agree-tos --no-eff-email -d smartdocbot.com -d www.smartdocbot.com
+    networks:
+      - smart-doc-bot-network
+    depends_on:
+      - nginx
+
+  # Backup Service
+  backup:
+    image: postgres:15-alpine
+    container_name: smart-doc-bot-backup
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=smart_doc_bot
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh
+    command: sh -c "while true; do /backup.sh; sleep 86400; done"
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  # Monitoring Stack - cAdvisor for Container Metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: smart-doc-bot-cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Jaeger for Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: smart-doc-bot-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+    networks:
+      - smart-doc-bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:16686/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
-  redis_data:
   postgres_data:
+    driver: local
+  redis_data:
+    driver: local
   chromadb_data:
+    driver: local
   prometheus_data:
+    driver: local
   grafana_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
 
 networks:
-  redline-network:
+  smart-doc-bot-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
