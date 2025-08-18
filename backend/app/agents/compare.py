@@ -1,240 +1,88 @@
 import json
-from typing import Any, Dict, List, Optional, Tuple
+import re
+from typing import Any, Dict, List, Optional
+from datetime import datetime
+from enum import Enum
 
 from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage
-from langchain.embeddings import OpenAIEmbeddings
+from langchain.schema import HumanMessage, SystemMessage
 
 from .base import BaseAgent, Tool
-from ..models.base import AgentResult, AgentType, ComparisonResult
+from ..models.base import AgentResult, AgentType, Document
 
 
-class SemanticDiffTool(Tool):
-    """Semantic difference analysis tool"""
+class ComparisonType(Enum):
+    """Comparison type enumeration"""
+    SEMANTIC = "semantic"
+    STRUCTURAL = "structural"
+    COMPLIANCE = "compliance"
+    RISK = "risk"
+    ENTITY = "entity"
+
+
+class SemanticComparisonTool(Tool):
+    """Tool for semantic document comparison"""
     
     def __init__(self):
-        super().__init__("semantic_diff", "Analyze semantic differences between documents")
-        self.embeddings = OpenAIEmbeddings()
+        super().__init__("semantic_compare", "Compare documents semantically")
     
-    async def execute(self, doc_a: str, doc_b: str, **kwargs) -> List[Dict[str, Any]]:
-        """Find semantic differences between documents"""
+    async def execute(self, doc_a_content: str, doc_b_content: str, doc_a_type: str, doc_b_type: str, **kwargs) -> Dict[str, Any]:
+        """Compare documents semantically"""
         try:
             from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
+            from langchain.schema import HumanMessage, SystemMessage
             
             llm = ChatOpenAI(model="gpt-4", temperature=0.1)
             
-            # Chunk documents for comparison
-            chunks_a = self._chunk_text(doc_a, chunk_size=500)
-            chunks_b = self._chunk_text(doc_b, chunk_size=500)
+            system_prompt = f"""You are an expert document comparison analyst. Compare these two documents semantically.
             
-            # Find differences
-            differences = []
+            DOCUMENT A TYPE: {doc_a_type}
+            DOCUMENT B TYPE: {doc_b_type}
             
-            # Compare key sections
-            sections_to_compare = [
-                "parties", "dates", "amounts", "obligations", "liabilities", 
-                "termination", "governing_law", "dispute_resolution"
+            For each semantic difference found, provide:
+            - difference_type: Type of semantic difference (content, meaning, intent, etc.)
+            - description: Detailed description of the difference
+            - severity: LOW/MEDIUM/HIGH/CRITICAL
+            - impact: Impact of this difference
+            - location_a: Where in document A this appears
+            - location_b: Where in document B this appears
+            - confidence: Confidence in this analysis (0.0-1.0)
+            
+            Also provide:
+            - overall_similarity: Overall similarity score (0.0-1.0)
+            - key_differences: Summary of key differences
+            - semantic_analysis: Overall semantic analysis
+            
+            Respond with JSON:
+            {{
+                "semantic_differences": [
+                    {{
+                        "difference_type": "content_change",
+                        "description": "detailed description",
+                        "severity": "MEDIUM",
+                        "impact": "impact description",
+                        "location_a": "section/page reference",
+                        "location_b": "section/page reference",
+                        "confidence": 0.9
+                    }}
+                ],
+                "overall_similarity": 0.75,
+                "key_differences": "summary of key differences",
+                "semantic_analysis": "overall semantic analysis"
+            }}
+            """
+            
+            user_prompt = f"Compare these documents semantically:\n\nDOCUMENT A ({doc_a_type}):\n{doc_a_content[:2000]}...\n\nDOCUMENT B ({doc_b_type}):\n{doc_b_content[:2000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
             ]
             
-            for section in sections_to_compare:
-                diff = await self._compare_section(section, doc_a, doc_b, llm)
-                if diff:
-                    differences.append(diff)
-            
-            # Find clause-level differences
-            clause_diffs = await self._find_clause_differences(chunks_a, chunks_b, llm)
-            differences.extend(clause_diffs)
-            
-            return differences
-            
-        except Exception as e:
-            return []
-    
-    def _chunk_text(self, text: str, chunk_size: int = 500) -> List[str]:
-        """Split text into chunks"""
-        chunks = []
-        start = 0
-        
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end]
-            
-            # Try to break at sentence boundary
-            if end < len(text):
-                last_period = chunk.rfind('.')
-                if last_period > start + chunk_size // 2:
-                    chunk = text[start:start + last_period + 1]
-                    end = start + last_period + 1
-            
-            chunks.append(chunk)
-            start = end
-        
-        return chunks
-    
-    async def _compare_section(self, section: str, doc_a: str, doc_b: str, llm) -> Optional[Dict[str, Any]]:
-        """Compare a specific section between documents"""
-        try:
-            prompt = f"""
-Compare the {section} section between two documents and identify differences.
-
-DOCUMENT A (first 1000 chars):
-{doc_a[:1000]}...
-
-DOCUMENT B (first 1000 chars):
-{doc_b[:1000]}...
-
-TASK: Find differences in {section} information between the documents.
-
-Respond with JSON:
-{{
-    "section": "{section}",
-    "differences": [
-        {{
-            "type": "added/removed/modified",
-            "description": "description of difference",
-            "doc_a_value": "value in doc A",
-            "doc_b_value": "value in doc B",
-            "impact": "low/medium/high",
-            "confidence": 0.85
-        }}
-    ],
-    "has_differences": true
-}}
-"""
-            
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
+            response = await llm.agenerate([messages])
             result_text = response.generations[0][0].text.strip()
             
-            # Extract JSON
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0]
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1]
-            
-            result = json.loads(result_text)
-            
-            if result.get("has_differences", False):
-                return {
-                    "section": section,
-                    "differences": result.get("differences", []),
-                    "type": "section_comparison"
-                }
-            
-            return None
-            
-        except Exception:
-            return None
-    
-    async def _find_clause_differences(self, chunks_a: List[str], chunks_b: List[str], llm) -> List[Dict[str, Any]]:
-        """Find clause-level differences"""
-        try:
-            prompt = f"""
-Compare these document chunks and identify clause-level differences.
-
-CHUNKS FROM DOCUMENT A:
-{chr(10).join([f"Chunk {i+1}: {chunk[:200]}..." for i, chunk in enumerate(chunks_a[:3])])}
-
-CHUNKS FROM DOCUMENT B:
-{chr(10).join([f"Chunk {i+1}: {chunk[:200]}..." for i, chunk in enumerate(chunks_b[:3])])}
-
-TASK: Identify specific clause differences between the documents.
-
-Respond with JSON:
-{{
-    "clause_differences": [
-        {{
-            "clause_type": "liability/termination/payment/etc",
-            "difference": "description of difference",
-            "doc_a_clause": "clause text from A",
-            "doc_b_clause": "clause text from B",
-            "risk_impact": "increased/decreased/unchanged",
-            "confidence": 0.85
-        }}
-    ]
-}}
-"""
-            
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
-            result_text = response.generations[0][0].text.strip()
-            
-            # Extract JSON
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0]
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1]
-            
-            result = json.loads(result_text)
-            
-            differences = []
-            for diff in result.get("clause_differences", []):
-                differences.append({
-                    "section": diff.get("clause_type", "unknown"),
-                    "differences": [diff],
-                    "type": "clause_comparison"
-                })
-            
-            return differences
-            
-        except Exception:
-            return []
-
-
-class RiskDeltaTool(Tool):
-    """Calculate risk delta between documents"""
-    
-    def __init__(self):
-        super().__init__("risk_delta", "Calculate risk changes between documents")
-    
-    async def execute(self, differences: List[Dict[str, Any]], doc_a_risk: Dict[str, Any], doc_b_risk: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Calculate risk delta based on differences"""
-        try:
-            from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
-            
-            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
-            
-            prompt = f"""
-Calculate the risk delta between two documents based on their differences and risk assessments.
-
-DIFFERENCES:
-{json.dumps(differences, indent=2)}
-
-DOCUMENT A RISK ASSESSMENT:
-{json.dumps(doc_a_risk, indent=2)}
-
-DOCUMENT B RISK ASSESSMENT:
-{json.dumps(doc_b_risk, indent=2)}
-
-TASK:
-1. Calculate overall risk delta (positive = increased risk, negative = decreased risk)
-2. Identify specific risk changes by category
-3. Assess impact of each difference on risk
-
-Respond with JSON:
-{{
-    "overall_risk_delta": 0.15,
-    "risk_changes": {{
-        "liability": 0.2,
-        "compliance": -0.1,
-        "operational": 0.05
-    }},
-    "risk_factors": [
-        {{
-            "factor": "factor name",
-            "change": 0.1,
-            "reason": "explanation",
-            "impact": "high/medium/low"
-        }}
-    ],
-    "summary": "Overall risk increased by 15% due to..."
-}}
-"""
-            
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
-            result_text = response.generations[0][0].text.strip()
-            
-            # Extract JSON
+            # Extract JSON from response
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0]
             elif "```" in result_text:
@@ -244,57 +92,77 @@ Respond with JSON:
             
         except Exception as e:
             return {
-                "overall_risk_delta": 0.0,
-                "risk_changes": {},
-                "risk_factors": [],
-                "summary": f"Risk delta calculation failed: {str(e)}"
+                "semantic_differences": [],
+                "overall_similarity": 0.0,
+                "key_differences": f"Semantic comparison failed: {str(e)}",
+                "semantic_analysis": "Unable to perform semantic analysis"
             }
 
 
-class ComplianceImpactTool(Tool):
-    """Assess compliance impact of changes"""
+class StructuralComparisonTool(Tool):
+    """Tool for structural document comparison"""
     
     def __init__(self):
-        super().__init__("compliance_impact", "Assess compliance impact of document changes")
+        super().__init__("structural_compare", "Compare document structures")
     
-    async def execute(self, differences: List[Dict[str, Any]], **kwargs) -> Dict[str, Any]:
-        """Assess compliance impact"""
+    async def execute(self, doc_a_content: str, doc_b_content: str, doc_a_type: str, doc_b_type: str, **kwargs) -> Dict[str, Any]:
+        """Compare document structures"""
         try:
             from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
+            from langchain.schema import HumanMessage, SystemMessage
             
             llm = ChatOpenAI(model="gpt-4", temperature=0.1)
             
-            prompt = f"""
-Assess the compliance impact of these document changes.
-
-DIFFERENCES:
-{json.dumps(differences, indent=2)}
-
-TASK:
-1. Identify compliance implications of each change
-2. Assess regulatory impact
-3. Suggest compliance actions needed
-
-Respond with JSON:
-{{
-    "compliance_impact": "low/medium/high",
-    "regulatory_implications": [
-        {{
-            "regulation": "regulation name",
-            "impact": "description",
-            "action_required": "action needed"
-        }}
-    ],
-    "compliance_actions": ["action1", "action2"],
-    "risk_level": "low/medium/high"
-}}
-"""
+            system_prompt = f"""You are an expert document structure analyst. Compare the structure of these two documents.
             
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
+            DOCUMENT A TYPE: {doc_a_type}
+            DOCUMENT B TYPE: {doc_b_type}
+            
+            Analyze:
+            - Section organization
+            - Headers and formatting
+            - Content flow
+            - Document length and complexity
+            - Structural patterns
+            
+            For each structural difference, provide:
+            - difference_type: Type of structural difference
+            - description: Detailed description
+            - significance: LOW/MEDIUM/HIGH
+            - impact: Impact on document effectiveness
+            - confidence: Confidence in analysis (0.0-1.0)
+            
+            Also provide:
+            - structure_similarity: Structural similarity score (0.0-1.0)
+            - structural_analysis: Overall structural analysis
+            
+            Respond with JSON:
+            {{
+                "structural_differences": [
+                    {{
+                        "difference_type": "section_organization",
+                        "description": "detailed description",
+                        "significance": "MEDIUM",
+                        "impact": "impact description",
+                        "confidence": 0.9
+                    }}
+                ],
+                "structure_similarity": 0.8,
+                "structural_analysis": "overall structural analysis"
+            }}
+            """
+            
+            user_prompt = f"Compare the structure of these documents:\n\nDOCUMENT A ({doc_a_type}):\n{doc_a_content[:2000]}...\n\nDOCUMENT B ({doc_b_type}):\n{doc_b_content[:2000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
             result_text = response.generations[0][0].text.strip()
             
-            # Extract JSON
+            # Extract JSON from response
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0]
             elif "```" in result_text:
@@ -304,144 +172,452 @@ Respond with JSON:
             
         except Exception as e:
             return {
-                "compliance_impact": "unknown",
-                "regulatory_implications": [],
-                "compliance_actions": ["Manual review required"],
-                "risk_level": "unknown"
+                "structural_differences": [],
+                "structure_similarity": 0.0,
+                "structural_analysis": f"Structural comparison failed: {str(e)}"
+            }
+
+
+class ComplianceComparisonTool(Tool):
+    """Tool for compliance comparison"""
+    
+    def __init__(self):
+        super().__init__("compliance_compare", "Compare compliance aspects")
+    
+    async def execute(self, doc_a_content: str, doc_b_content: str, doc_a_risk: Dict, doc_b_risk: Dict, **kwargs) -> Dict[str, Any]:
+        """Compare compliance aspects"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
+            
+            system_prompt = """You are an expert compliance analyst. Compare the compliance aspects of these two documents.
+            
+            For each compliance difference, provide:
+            - compliance_area: Specific compliance area
+            - difference_type: Type of compliance difference
+            - description: Detailed description
+            - risk_impact: Impact on compliance risk
+            - recommendation: Compliance recommendation
+            - severity: LOW/MEDIUM/HIGH/CRITICAL
+            - confidence: Confidence in analysis (0.0-1.0)
+            
+            Also provide:
+            - compliance_impact: Overall compliance impact assessment
+            - risk_delta: Change in compliance risk
+            
+            Respond with JSON:
+            {
+                "compliance_differences": [
+                    {
+                        "compliance_area": "data_privacy",
+                        "difference_type": "regulation_change",
+                        "description": "detailed description",
+                        "risk_impact": "impact description",
+                        "recommendation": "compliance recommendation",
+                        "severity": "HIGH",
+                        "confidence": 0.9
+                    }
+                ],
+                "compliance_impact": "overall compliance impact",
+                "risk_delta": "change in compliance risk"
+            }
+            """
+            
+            # Include risk assessment context
+            risk_context = f"\n\nDOCUMENT A RISK ASSESSMENT:\n{json.dumps(doc_a_risk, indent=2)}\n\nDOCUMENT B RISK ASSESSMENT:\n{json.dumps(doc_b_risk, indent=2)}"
+            
+            user_prompt = f"Compare compliance aspects of these documents:{risk_context}\n\nDOCUMENT A:\n{doc_a_content[:1500]}...\n\nDOCUMENT B:\n{doc_b_content[:1500]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            return json.loads(result_text)
+            
+        except Exception as e:
+            return {
+                "compliance_differences": [],
+                "compliance_impact": f"Compliance comparison failed: {str(e)}",
+                "risk_delta": "Unable to assess risk delta"
+            }
+
+
+class EntityComparisonTool(Tool):
+    """Tool for entity comparison"""
+    
+    def __init__(self):
+        super().__init__("entity_compare", "Compare extracted entities")
+    
+    async def execute(self, doc_a_entities: List[Dict], doc_b_entities: List[Dict], **kwargs) -> Dict[str, Any]:
+        """Compare extracted entities"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
+            
+            system_prompt = """You are an expert entity comparison analyst. Compare the entities extracted from two documents.
+            
+            For each entity difference, provide:
+            - entity_type: Type of entity (PERSON, ORGANIZATION, DATE, etc.)
+            - difference_type: Type of difference (added, removed, changed)
+            - entity_a: Entity from document A
+            - entity_b: Entity from document B (if applicable)
+            - significance: LOW/MEDIUM/HIGH
+            - impact: Impact of this entity difference
+            - confidence: Confidence in analysis (0.0-1.0)
+            
+            Also provide:
+            - entity_similarity: Entity similarity score (0.0-1.0)
+            - entity_analysis: Overall entity analysis
+            
+            Respond with JSON:
+            {
+                "entity_differences": [
+                    {
+                        "entity_type": "PERSON",
+                        "difference_type": "added",
+                        "entity_a": "John Doe",
+                        "entity_b": null,
+                        "significance": "MEDIUM",
+                        "impact": "impact description",
+                        "confidence": 0.9
+                    }
+                ],
+                "entity_similarity": 0.7,
+                "entity_analysis": "overall entity analysis"
+            }
+            """
+            
+            user_prompt = f"Compare these entities:\n\nDOCUMENT A ENTITIES:\n{json.dumps(doc_a_entities[:20], indent=2)}\n\nDOCUMENT B ENTITIES:\n{json.dumps(doc_b_entities[:20], indent=2)}"
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            return json.loads(result_text)
+            
+        except Exception as e:
+            return {
+                "entity_differences": [],
+                "entity_similarity": 0.0,
+                "entity_analysis": f"Entity comparison failed: {str(e)}"
+            }
+
+
+class ComparisonSummaryTool(Tool):
+    """Tool for generating comparison summary"""
+    
+    def __init__(self):
+        super().__init__("generate_summary", "Generate comparison summary")
+    
+    async def execute(self, semantic_result: Dict, structural_result: Dict, compliance_result: Dict, entity_result: Dict, **kwargs) -> Dict[str, Any]:
+        """Generate comprehensive comparison summary"""
+        try:
+            # Calculate overall similarity
+            similarities = [
+                semantic_result.get("overall_similarity", 0.0),
+                structural_result.get("structure_similarity", 0.0),
+                entity_result.get("entity_similarity", 0.0)
+            ]
+            
+            # Weighted average (semantic gets higher weight)
+            weights = [0.5, 0.3, 0.2]
+            overall_similarity = sum(s * w for s, w in zip(similarities, weights))
+            
+            # Count differences by severity
+            all_differences = []
+            
+            semantic_diffs = semantic_result.get("semantic_differences", [])
+            for diff in semantic_diffs:
+                diff["category"] = "semantic"
+                all_differences.append(diff)
+            
+            structural_diffs = structural_result.get("structural_differences", [])
+            for diff in structural_diffs:
+                diff["category"] = "structural"
+                all_differences.append(diff)
+            
+            compliance_diffs = compliance_result.get("compliance_differences", [])
+            for diff in compliance_diffs:
+                diff["category"] = "compliance"
+                all_differences.append(diff)
+            
+            entity_diffs = entity_result.get("entity_differences", [])
+            for diff in entity_diffs:
+                diff["category"] = "entity"
+                all_differences.append(diff)
+            
+            # Severity distribution
+            severity_dist = {"LOW": 0, "MEDIUM": 0, "HIGH": 0, "CRITICAL": 0}
+            for diff in all_differences:
+                severity = diff.get("severity", "LOW")
+                severity_dist[severity] += 1
+            
+            # Category distribution
+            category_dist = {}
+            for diff in all_differences:
+                category = diff.get("category", "unknown")
+                category_dist[category] = category_dist.get(category, 0) + 1
+            
+            # Generate insights
+            insights = []
+            
+            if overall_similarity > 0.8:
+                insights.append("Documents are highly similar with minimal differences")
+            elif overall_similarity > 0.6:
+                insights.append("Documents show moderate similarity with some key differences")
+            else:
+                insights.append("Documents show significant differences requiring careful review")
+            
+            critical_diffs = [d for d in all_differences if d.get("severity") == "CRITICAL"]
+            if critical_diffs:
+                insights.append(f"Found {len(critical_diffs)} critical differences requiring immediate attention")
+            
+            compliance_impact = compliance_result.get("compliance_impact", "")
+            if "risk" in compliance_impact.lower() or "compliance" in compliance_impact.lower():
+                insights.append("Significant compliance implications detected")
+            
+            # Generate recommendations
+            recommendations = []
+            
+            if critical_diffs:
+                recommendations.append("Immediate review required for critical differences")
+            
+            high_diffs = [d for d in all_differences if d.get("severity") == "HIGH"]
+            if high_diffs:
+                recommendations.append("High-priority review recommended for high-severity differences")
+            
+            if compliance_diffs:
+                recommendations.append("Legal/compliance review recommended")
+            
+            if not recommendations:
+                recommendations.append("Documents appear compatible with standard review process")
+            
+            return {
+                "overall_similarity": overall_similarity,
+                "total_differences": len(all_differences),
+                "severity_distribution": severity_dist,
+                "category_distribution": category_dist,
+                "insights": insights,
+                "recommendations": recommendations,
+                "comparison_summary": {
+                    "semantic_analysis": semantic_result.get("semantic_analysis", ""),
+                    "structural_analysis": structural_result.get("structural_analysis", ""),
+                    "compliance_impact": compliance_result.get("compliance_impact", ""),
+                    "entity_analysis": entity_result.get("entity_analysis", "")
+                }
+            }
+            
+        except Exception as e:
+            return {
+                "overall_similarity": 0.0,
+                "total_differences": 0,
+                "severity_distribution": {},
+                "category_distribution": {},
+                "insights": [f"Summary generation failed: {str(e)}"],
+                "recommendations": ["Manual review required"],
+                "comparison_summary": {}
             }
 
 
 class CompareAgent(BaseAgent):
-    """Agent responsible for document comparison and risk delta analysis"""
+    """Agent responsible for document comparison and analysis"""
     
     def __init__(self, llm_model: str = "gpt-4"):
         super().__init__("CompareAgent", AgentType.COMPARE)
         self.llm = ChatOpenAI(model=llm_model, temperature=0.1)
         
         # Add tools
-        self.add_tool(SemanticDiffTool())
-        self.add_tool(RiskDeltaTool())
-        self.add_tool(ComplianceImpactTool())
+        self.add_tool(SemanticComparisonTool())
+        self.add_tool(StructuralComparisonTool())
+        self.add_tool(ComplianceComparisonTool())
+        self.add_tool(EntityComparisonTool())
+        self.add_tool(ComparisonSummaryTool())
     
     async def run(self, goal: str, context: Dict[str, Any]) -> AgentResult:
-        """Main comparison process"""
-        doc_a = context.get("document_a")
-        doc_b = context.get("document_b")
+        """Main document comparison process"""
+        document_a = context.get("document_a")
+        document_b = context.get("document_b")
         
-        if not doc_a or not doc_b:
+        if not document_a or not document_b:
             return AgentResult(
                 output=None,
                 rationale="Two documents required for comparison",
                 confidence=0.0,
-                next_suggested_action="Provide document_a and document_b in context"
+                next_suggested_action="Provide both documents in context"
             )
         
         try:
-            # Extract document content
-            content_a = doc_a.content if hasattr(doc_a, 'content') else str(doc_a)
-            content_b = doc_b.content if hasattr(doc_b, 'content') else str(doc_b)
+            # Get document information
+            doc_a_type = document_a.doc_type.value if document_a.doc_type else "unknown"
+            doc_b_type = document_b.doc_type.value if document_b.doc_type else "unknown"
             
-            # Get risk assessments if available
-            risk_a = context.get("risk_assessment_a", {})
-            risk_b = context.get("risk_assessment_b", {})
+            doc_a_entities = document_a.metadata.get("entities", [])
+            doc_b_entities = document_b.metadata.get("entities", [])
             
-            # Perform semantic diff
-            diff_tool = self.get_tool("semantic_diff")
-            differences = await diff_tool.execute(doc_a=content_a, doc_b=content_b)
+            doc_a_risk = document_a.metadata.get("risk_assessment", {})
+            doc_b_risk = document_b.metadata.get("risk_assessment", {})
             
-            # Calculate risk delta
-            risk_tool = self.get_tool("risk_delta")
-            risk_delta = await risk_tool.execute(
-                differences=differences,
-                doc_a_risk=risk_a,
-                doc_b_risk=risk_b
+            # Perform semantic comparison
+            semantic_tool = self.get_tool("semantic_compare")
+            semantic_result = await semantic_tool.execute(
+                doc_a_content=document_a.content,
+                doc_b_content=document_b.content,
+                doc_a_type=doc_a_type,
+                doc_b_type=doc_b_type
             )
             
-            # Assess compliance impact
-            compliance_tool = self.get_tool("compliance_impact")
-            compliance_impact = await compliance_tool.execute(differences=differences)
+            # Perform structural comparison
+            structural_tool = self.get_tool("structural_compare")
+            structural_result = await structural_tool.execute(
+                doc_a_content=document_a.content,
+                doc_b_content=document_b.content,
+                doc_a_type=doc_a_type,
+                doc_b_type=doc_b_type
+            )
+            
+            # Perform compliance comparison
+            compliance_tool = self.get_tool("compliance_compare")
+            compliance_result = await compliance_tool.execute(
+                doc_a_content=document_a.content,
+                doc_b_content=document_b.content,
+                doc_a_risk=doc_a_risk,
+                doc_b_risk=doc_b_risk
+            )
+            
+            # Perform entity comparison
+            entity_tool = self.get_tool("entity_compare")
+            entity_result = await entity_tool.execute(
+                doc_a_entities=doc_a_entities,
+                doc_b_entities=doc_b_entities
+            )
+            
+            # Generate comparison summary
+            summary_tool = self.get_tool("generate_summary")
+            comparison_summary = await summary_tool.execute(
+                semantic_result=semantic_result,
+                structural_result=structural_result,
+                compliance_result=compliance_result,
+                entity_result=entity_result
+            )
             
             # Create comparison result
-            comparison_result = ComparisonResult(
-                doc_a_id=getattr(doc_a, 'id', 'unknown'),
-                doc_b_id=getattr(doc_b, 'id', 'unknown'),
-                semantic_diffs=differences,
-                risk_delta=risk_delta.get("risk_changes", {}),
-                confidence=0.8,  # Based on analysis quality
-                summary=risk_delta.get("summary", "Comparison completed")
+            comparison_result = {
+                "comparison_id": f"comp_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+                "document_a": {
+                    "id": getattr(document_a, 'id', 'unknown'),
+                    "type": doc_a_type,
+                    "filename": getattr(document_a, 'filename', 'unknown')
+                },
+                "document_b": {
+                    "id": getattr(document_b, 'id', 'unknown'),
+                    "type": doc_b_type,
+                    "filename": getattr(document_b, 'filename', 'unknown')
+                },
+                "comparison_results": {
+                    "semantic": semantic_result,
+                    "structural": structural_result,
+                    "compliance": compliance_result,
+                    "entity": entity_result,
+                    "summary": comparison_summary
+                },
+                "comparison_metadata": {
+                    "compared_at": datetime.utcnow().isoformat(),
+                    "comparison_type": "comprehensive"
+                }
+            }
+            
+            # Calculate confidence
+            confidence = self._calculate_confidence(
+                semantic_result,
+                structural_result,
+                compliance_result,
+                entity_result,
+                comparison_summary
             )
             
-            # Calculate overall confidence
-            total_differences = len(differences)
-            if total_differences == 0:
-                overall_confidence = 0.9  # High confidence in no differences
-            else:
-                # Average confidence across differences
-                avg_confidence = sum(
-                    diff.get("confidence", 0.8) 
-                    for section in differences 
-                    for diff in section.get("differences", [])
-                ) / max(1, sum(len(section.get("differences", [])) for section in differences))
-                overall_confidence = avg_confidence
-            
             # Generate rationale
-            rationale = f"Found {total_differences} difference categories. Risk delta: {risk_delta.get('overall_risk_delta', 0):.2f}. Compliance impact: {compliance_impact.get('compliance_impact', 'unknown')}"
+            overall_similarity = comparison_summary.get("overall_similarity", 0.0)
+            total_differences = comparison_summary.get("total_differences", 0)
+            
+            rationale = f"Comparison completed: {overall_similarity:.2f} similarity, {total_differences} differences identified across semantic, structural, compliance, and entity dimensions"
             
             return AgentResult(
-                output={
-                    "comparison": comparison_result,
-                    "risk_delta": risk_delta,
-                    "compliance_impact": compliance_impact,
-                    "differences": differences
-                },
+                output=comparison_result,
                 rationale=rationale,
-                confidence=overall_confidence,
-                next_suggested_action="Review high-impact differences" if risk_delta.get("overall_risk_delta", 0) > 0.1 else "Proceed with confidence"
+                confidence=confidence,
+                next_suggested_action="Review comparison results and address critical differences",
+                metadata={
+                    "semantic_result": semantic_result,
+                    "structural_result": structural_result,
+                    "compliance_result": compliance_result,
+                    "entity_result": entity_result,
+                    "comparison_summary": comparison_summary
+                }
             )
             
         except Exception as e:
             return AgentResult(
-                output={
-                    "comparison": ComparisonResult(
-                        doc_a_id="unknown",
-                        doc_b_id="unknown",
-                        semantic_diffs=[],
-                        risk_delta={},
-                        confidence=0.0,
-                        summary=f"Comparison failed: {str(e)}"
-                    ),
-                    "risk_delta": {},
-                    "compliance_impact": {},
-                    "differences": []
-                },
-                rationale=f"Comparison failed: {str(e)}",
+                output=None,
+                rationale=f"Document comparison failed: {str(e)}",
                 confidence=0.0,
                 next_suggested_action="Manual comparison required"
             )
     
-    def get_comparison_summary(self, differences: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Get summary of comparison differences"""
-        if not differences:
-            return {"total_differences": 0, "by_type": {}, "by_impact": {}}
+    def _calculate_confidence(self, semantic_result: Dict, structural_result: Dict, compliance_result: Dict, entity_result: Dict, summary: Dict) -> float:
+        """Calculate confidence based on comparison results"""
+        confidence = 0.5  # Base confidence
         
-        by_type = {}
-        by_impact = {}
+        # Semantic analysis confidence
+        semantic_diffs = semantic_result.get("semantic_differences", [])
+        if semantic_diffs:
+            avg_semantic_confidence = sum(d.get("confidence", 0) for d in semantic_diffs) / len(semantic_diffs)
+            confidence += avg_semantic_confidence * 0.2
         
-        for section in differences:
-            section_type = section.get("type", "unknown")
-            if section_type not in by_type:
-                by_type[section_type] = 0
-            by_type[section_type] += 1
-            
-            for diff in section.get("differences", []):
-                impact = diff.get("impact", "unknown")
-                if impact not in by_impact:
-                    by_impact[impact] = 0
-                by_impact[impact] += 1
+        # Structural analysis confidence
+        structural_diffs = structural_result.get("structural_differences", [])
+        if structural_diffs:
+            avg_structural_confidence = sum(d.get("confidence", 0) for d in structural_diffs) / len(structural_diffs)
+            confidence += avg_structural_confidence * 0.15
         
-        return {
-            "total_differences": sum(len(section.get("differences", [])) for section in differences),
-            "by_type": by_type,
-            "by_impact": by_impact,
-            "high_impact_count": by_impact.get("high", 0)
-        }
+        # Compliance analysis confidence
+        compliance_diffs = compliance_result.get("compliance_differences", [])
+        if compliance_diffs:
+            avg_compliance_confidence = sum(d.get("confidence", 0) for d in compliance_diffs) / len(compliance_diffs)
+            confidence += avg_compliance_confidence * 0.15
+        
+        # Entity analysis confidence
+        entity_diffs = entity_result.get("entity_differences", [])
+        if entity_diffs:
+            avg_entity_confidence = sum(d.get("confidence", 0) for d in entity_diffs) / len(entity_diffs)
+            confidence += avg_entity_confidence * 0.1
+        
+        # Overall analysis completeness
+        total_differences = summary.get("total_differences", 0)
+        if total_differences > 0:
+            confidence += 0.1
+        
+        return min(1.0, max(0.0, confidence))
