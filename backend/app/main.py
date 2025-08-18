@@ -16,7 +16,7 @@ from .core.middleware import PIIRedactionMiddleware, AuditLogMiddleware
 from .api.v1.endpoints import agentic, documents, traces, qa, compare, audit
 from .services.agent_service import AgentService
 from .services.memory_service import MemoryService
-from .core.monitoring import setup_monitoring
+from .core.monitoring import setup_monitoring, instrument_fastapi
 
 
 @asynccontextmanager
@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI):
     
     # Setup monitoring
     setup_monitoring()
+    instrument_fastapi(app)
     
     print("✅ Services initialized successfully")
     
@@ -64,6 +65,17 @@ app.add_middleware(
 
 app.add_middleware(PIIRedactionMiddleware)
 app.add_middleware(AuditLogMiddleware)
+
+# Dependency injection
+def get_agent_service() -> AgentService:
+    return app.state.agent_service
+
+def get_memory_service() -> MemoryService:
+    return app.state.memory_service
+
+# Override dependency injection for endpoints
+app.dependency_overrides[AgentService] = get_agent_service
+app.dependency_overrides[MemoryService] = get_memory_service
 
 # Include routers
 app.include_router(agentic.router, prefix="/api/v1/agentic", tags=["Agentic Processing"])
