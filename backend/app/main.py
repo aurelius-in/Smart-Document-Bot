@@ -14,7 +14,7 @@ from sse_starlette.sse import EventSourceResponse
 from .core.config import settings
 from .core.security import get_current_user, create_access_token
 from .core.middleware import PIIRedactionMiddleware, AuditLogMiddleware, RequestLoggingMiddleware
-from .api.v1.endpoints import agentic, documents, traces, qa, compare, audit, settings, memory
+from .api.v1.endpoints import agentic, documents, traces, qa, compare, audit, settings, memory, summarizer, translator, sentiment
 from .services.agent_service import AgentService
 from .services.memory_service import MemoryService
 from .core.monitoring import setup_monitoring, instrument_fastapi
@@ -143,6 +143,27 @@ app.include_router(
     memory.router,
     prefix="/api/v1/memory",
     tags=["Memory"]
+)
+
+app.include_router(
+    summarizer.router,
+    prefix="/api/v1/summarizer",
+    tags=["Document Summarization"],
+    dependencies=[Depends(get_agent_service)]
+)
+
+app.include_router(
+    translator.router,
+    prefix="/api/v1/translator",
+    tags=["Document Translation"],
+    dependencies=[Depends(get_agent_service)]
+)
+
+app.include_router(
+    sentiment.router,
+    prefix="/api/v1/sentiment",
+    tags=["Sentiment Analysis"],
+    dependencies=[Depends(get_agent_service)]
 )
 
 # Health check endpoint
