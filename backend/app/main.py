@@ -13,7 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 from .core.config import settings
 from .core.security import get_current_user, create_access_token
 from .core.middleware import PIIRedactionMiddleware, AuditLogMiddleware
-from .api.v1.endpoints import agentic, documents, traces, qa, compare, audit
+from .api.v1.endpoints import agentic, documents, traces, qa, compare, audit, auth, settings, memory
 from .services.agent_service import AgentService
 from .services.memory_service import MemoryService
 from .core.monitoring import setup_monitoring, instrument_fastapi
@@ -78,12 +78,15 @@ app.dependency_overrides[AgentService] = get_agent_service
 app.dependency_overrides[MemoryService] = get_memory_service
 
 # Include routers
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(agentic.router, prefix="/api/v1/agentic", tags=["Agentic Processing"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
 app.include_router(traces.router, prefix="/api/v1/traces", tags=["Agent Traces"])
 app.include_router(qa.router, prefix="/api/v1/qa", tags=["Q&A"])
 app.include_router(compare.router, prefix="/api/v1/compare", tags=["Document Comparison"])
 app.include_router(audit.router, prefix="/api/v1/audit", tags=["Audit"])
+app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"])
+app.include_router(memory.router, prefix="/api/v1/memory", tags=["Memory"])
 
 
 @app.get("/")
@@ -109,20 +112,10 @@ async def health_check():
     }
 
 
-@app.post("/api/v1/auth/login")
-async def login(credentials: Dict[str, str]):
-    """Login endpoint"""
-    # In a real implementation, validate credentials against database
-    if credentials.get("username") == "admin" and credentials.get("password") == "password":
-        token = create_access_token(data={"sub": credentials["username"]})
-        return {"access_token": token, "token_type": "bearer"}
-    raise HTTPException(status_code=401, detail="Invalid credentials")
-
-
 @app.get("/api/v1/stream/agent-trace/{trace_id}")
 async def stream_agent_trace(
     trace_id: str,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """Stream live agent trace updates"""
     
