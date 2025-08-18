@@ -11,6 +11,9 @@ from ..agents.risk import RiskAgent
 from ..agents.qa import QAAgent
 from ..agents.compare import CompareAgent
 from ..agents.audit import AuditAgent
+from ..agents.summarizer import SummarizerAgent
+from ..agents.translator import TranslatorAgent
+from ..agents.sentiment import SentimentAnalysisAgent
 from ..models.base import Document, AgentResult, AgentType
 from ..core.config import settings
 
@@ -30,6 +33,9 @@ class AgentService:
         self.qa_agent = QAAgent(llm_model=settings.LLM_MODEL)
         self.compare_agent = CompareAgent(llm_model=settings.LLM_MODEL)
         self.audit_agent = AuditAgent(llm_model=settings.LLM_MODEL)
+        self.summarizer_agent = SummarizerAgent(llm_model=settings.LLM_MODEL)
+        self.translator_agent = TranslatorAgent(llm_model=settings.LLM_MODEL)
+        self.sentiment_agent = SentimentAnalysisAgent(llm_model=settings.LLM_MODEL)
         
         # Processing history
         self.processing_history = {}
@@ -106,7 +112,10 @@ class AgentService:
                 "risk": self.risk_agent,
                 "qa": self.qa_agent,
                 "compare": self.compare_agent,
-                "audit": self.audit_agent
+                "audit": self.audit_agent,
+                "summarizer": self.summarizer_agent,
+                "translator": self.translator_agent,
+                "sentiment": self.sentiment_agent
             }
             
             agent = agent_mapping.get(agent_type.lower())
