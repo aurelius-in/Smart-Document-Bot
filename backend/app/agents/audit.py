@@ -1,132 +1,378 @@
-import hashlib
 import json
-import time
-from datetime import datetime
+import re
 from typing import Any, Dict, List, Optional
-from uuid import UUID
+from datetime import datetime
+from enum import Enum
 
 from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage
+from langchain.schema import HumanMessage, SystemMessage
 
 from .base import BaseAgent, Tool
-from ..models.base import AgentResult, AgentType, AuditBundle, RiskFinding, Entity
+from ..models.base import AgentResult, AgentType, Document
 
 
-class AuditLogTool(Tool):
-    """Create immutable audit logs"""
+class AuditLevel(Enum):
+    """Audit level enumeration"""
+    BASIC = "basic"
+    STANDARD = "standard"
+    COMPREHENSIVE = "comprehensive"
+    REGULATORY = "regulatory"
+
+
+class AuditType(Enum):
+    """Audit type enumeration"""
+    COMPLIANCE = "compliance"
+    RISK = "risk"
+    OPERATIONAL = "operational"
+    FINANCIAL = "financial"
+    SECURITY = "security"
+
+
+class AuditTrailGeneratorTool(Tool):
+    """Tool for generating comprehensive audit trails"""
     
     def __init__(self):
-        super().__init__("audit_log", "Create immutable audit log entries")
+        super().__init__("generate_audit_trail", "Generate comprehensive audit trail")
     
-    async def execute(self, trace_id: UUID, steps: List[Dict[str, Any]], **kwargs) -> Dict[str, Any]:
-        """Create audit log with hash chaining"""
+    async def execute(self, document: Document, processing_history: List[Dict], **kwargs) -> Dict[str, Any]:
+        """Generate audit trail for document processing"""
         try:
-            audit_entries = []
-            previous_hash = None
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
             
-            for i, step in enumerate(steps):
-                # Create audit entry
-                entry = {
-                    "entry_id": i + 1,
-                    "timestamp": step.get("timestamp", datetime.utcnow().isoformat()),
-                    "agent": step.get("agent", "unknown"),
-                    "action": step.get("tool", "execution"),
-                    "input_ref": step.get("input_ref"),
-                    "output_ref": step.get("output_ref"),
-                    "rationale": step.get("rationale", ""),
-                    "confidence": step.get("confidence", 0.0),
-                    "duration_ms": step.get("duration_ms", 0),
-                    "previous_hash": previous_hash,
-                    "metadata": step.get("metadata", {})
-                }
-                
-                # Calculate hash
-                entry_data = json.dumps(entry, sort_keys=True, default=str)
-                entry_hash = hashlib.sha256(entry_data.encode()).hexdigest()
-                entry["hash"] = entry_hash
-                
-                audit_entries.append(entry)
-                previous_hash = entry_hash
+            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
             
-            # Create final audit log
-            audit_log = {
-                "trace_id": str(trace_id),
+            system_prompt = """You are an expert audit trail generator. Create a comprehensive audit trail for document processing.
+            
+            For each audit event, provide:
+            - event_id: Unique event identifier
+            - timestamp: ISO timestamp
+            - event_type: Type of audit event
+            - description: Detailed description
+            - severity: LOW/MEDIUM/HIGH/CRITICAL
+            - user: User who performed action
+            - system_component: Component that generated event
+            - metadata: Additional event metadata
+            - compliance_relevance: Compliance implications
+            
+            Also provide:
+            - audit_summary: Overall audit summary
+            - compliance_status: Compliance status assessment
+            - recommendations: Audit recommendations
+            
+            Respond with JSON:
+            {
+                "audit_events": [
+                    {
+                        "event_id": "evt_001",
+                        "timestamp": "2024-01-01T10:00:00Z",
+                        "event_type": "document_upload",
+                        "description": "Document uploaded for processing",
+                        "severity": "LOW",
+                        "user": "user@example.com",
+                        "system_component": "upload_service",
+                        "metadata": {"file_size": 1024, "file_type": "pdf"},
+                        "compliance_relevance": "Standard document processing"
+                    }
+                ],
+                "audit_summary": "Comprehensive audit trail generated",
+                "compliance_status": "COMPLIANT",
+                "recommendations": ["Continue monitoring", "Review access logs"]
+            }
+            """
+            
+            # Prepare processing history context
+            history_context = ""
+            if processing_history:
+                history_context = f"\n\nPROCESSING HISTORY:\n{json.dumps(processing_history, indent=2)}"
+            
+            # Get document metadata
+            doc_metadata = document.metadata if hasattr(document, 'metadata') else {}
+            doc_type = document.doc_type.value if hasattr(document, 'doc_type') and document.doc_type else "unknown"
+            
+            user_prompt = f"Generate audit trail for {doc_type} document:{history_context}\n\nDOCUMENT METADATA:\n{json.dumps(doc_metadata, indent=2)}\n\nDOCUMENT CONTENT (first 1000 chars):\n{document.content[:1000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            return json.loads(result_text)
+            
+        except Exception as e:
+            return {
+                "audit_events": [],
+                "audit_summary": f"Audit trail generation failed: {str(e)}",
+                "compliance_status": "UNKNOWN",
+                "recommendations": ["Manual audit review required"]
+            }
+
+
+class ComplianceReportGeneratorTool(Tool):
+    """Tool for generating compliance reports"""
+    
+    def __init__(self):
+        super().__init__("generate_compliance_report", "Generate compliance report")
+    
+    async def execute(self, document: Document, risk_assessment: Dict, audit_trail: Dict, **kwargs) -> Dict[str, Any]:
+        """Generate compliance report"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
+            
+            system_prompt = """You are an expert compliance analyst. Generate a comprehensive compliance report.
+            
+            For each compliance finding, provide:
+            - finding_id: Unique finding identifier
+            - regulation: Applicable regulation
+            - requirement: Specific requirement
+            - status: COMPLIANT/NON_COMPLIANT/PARTIAL
+            - description: Detailed description
+            - evidence: Supporting evidence
+            - risk_level: LOW/MEDIUM/HIGH/CRITICAL
+            - remediation: Required remediation actions
+            - deadline: Remediation deadline
+            
+            Also provide:
+            - overall_compliance_score: Overall compliance score (0.0-1.0)
+            - compliance_summary: Overall compliance assessment
+            - regulatory_implications: Regulatory implications
+            - next_steps: Recommended next steps
+            
+            Respond with JSON:
+            {
+                "compliance_findings": [
+                    {
+                        "finding_id": "comp_001",
+                        "regulation": "GDPR",
+                        "requirement": "Data Protection",
+                        "status": "COMPLIANT",
+                        "description": "Document contains appropriate data protection measures",
+                        "evidence": "Encryption and access controls implemented",
+                        "risk_level": "LOW",
+                        "remediation": "None required",
+                        "deadline": "N/A"
+                    }
+                ],
+                "overall_compliance_score": 0.85,
+                "compliance_summary": "Document demonstrates good compliance posture",
+                "regulatory_implications": "Minimal regulatory risk",
+                "next_steps": ["Continue monitoring", "Annual review"]
+            }
+            """
+            
+            # Prepare context
+            context = ""
+            if risk_assessment:
+                context += f"\n\nRISK ASSESSMENT:\n{json.dumps(risk_assessment, indent=2)}"
+            if audit_trail:
+                context += f"\n\nAUDIT TRAIL:\n{json.dumps(audit_trail, indent=2)}"
+            
+            doc_type = document.doc_type.value if hasattr(document, 'doc_type') and document.doc_type else "unknown"
+            doc_metadata = document.metadata if hasattr(document, 'metadata') else {}
+            
+            user_prompt = f"Generate compliance report for {doc_type} document:{context}\n\nDOCUMENT METADATA:\n{json.dumps(doc_metadata, indent=2)}\n\nDOCUMENT CONTENT (first 1000 chars):\n{document.content[:1000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            return json.loads(result_text)
+            
+        except Exception as e:
+            return {
+                "compliance_findings": [],
+                "overall_compliance_score": 0.0,
+                "compliance_summary": f"Compliance report generation failed: {str(e)}",
+                "regulatory_implications": "Unable to assess",
+                "next_steps": ["Manual compliance review required"]
+            }
+
+
+class AuditBundleGeneratorTool(Tool):
+    """Tool for generating audit bundles"""
+    
+    def __init__(self):
+        super().__init__("generate_audit_bundle", "Generate audit bundle")
+    
+    async def execute(self, document: Document, audit_trail: Dict, compliance_report: Dict, risk_assessment: Dict, **kwargs) -> Dict[str, Any]:
+        """Generate comprehensive audit bundle"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
+            
+            system_prompt = """You are an expert audit bundle generator. Create a comprehensive audit bundle for regulatory compliance.
+            
+            The audit bundle should include:
+            - executive_summary: High-level summary
+            - audit_scope: Scope of audit
+            - methodology: Audit methodology
+            - findings_summary: Summary of findings
+            - risk_assessment: Risk assessment summary
+            - compliance_assessment: Compliance assessment
+            - recommendations: Detailed recommendations
+            - appendices: Supporting documentation
+            
+            Also provide:
+            - bundle_id: Unique bundle identifier
+            - created_at: Creation timestamp
+            - valid_until: Validity period
+            - regulatory_frameworks: Applicable frameworks
+            - audit_level: Audit level (BASIC/STANDARD/COMPREHENSIVE/REGULATORY)
+            
+            Respond with JSON:
+            {
+                "bundle_id": "audit_bundle_001",
+                "created_at": "2024-01-01T10:00:00Z",
+                "valid_until": "2024-12-31T23:59:59Z",
+                "regulatory_frameworks": ["GDPR", "SOX", "ISO27001"],
+                "audit_level": "COMPREHENSIVE",
+                "executive_summary": "Comprehensive audit completed",
+                "audit_scope": "Full document lifecycle audit",
+                "methodology": "Risk-based audit approach",
+                "findings_summary": "Summary of audit findings",
+                "risk_assessment": "Overall risk assessment",
+                "compliance_assessment": "Compliance status assessment",
+                "recommendations": ["Recommendation 1", "Recommendation 2"],
+                "appendices": ["Appendix A", "Appendix B"]
+            }
+            """
+            
+            # Prepare comprehensive context
+            context = ""
+            if audit_trail:
+                context += f"\n\nAUDIT TRAIL:\n{json.dumps(audit_trail, indent=2)}"
+            if compliance_report:
+                context += f"\n\nCOMPLIANCE REPORT:\n{json.dumps(compliance_report, indent=2)}"
+            if risk_assessment:
+                context += f"\n\nRISK ASSESSMENT:\n{json.dumps(risk_assessment, indent=2)}"
+            
+            doc_type = document.doc_type.value if hasattr(document, 'doc_type') and document.doc_type else "unknown"
+            doc_metadata = document.metadata if hasattr(document, 'metadata') else {}
+            
+            user_prompt = f"Generate audit bundle for {doc_type} document:{context}\n\nDOCUMENT METADATA:\n{json.dumps(doc_metadata, indent=2)}\n\nDOCUMENT CONTENT (first 1000 chars):\n{document.content[:1000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            return json.loads(result_text)
+            
+        except Exception as e:
+            return {
+                "bundle_id": f"audit_bundle_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
                 "created_at": datetime.utcnow().isoformat(),
-                "total_entries": len(audit_entries),
-                "entries": audit_entries,
-                "final_hash": previous_hash
-            }
-            
-            return audit_log
-            
-        except Exception as e:
-            return {
-                "error": str(e),
-                "trace_id": str(trace_id),
-                "entries": []
+                "valid_until": "2024-12-31T23:59:59Z",
+                "regulatory_frameworks": [],
+                "audit_level": "BASIC",
+                "executive_summary": f"Audit bundle generation failed: {str(e)}",
+                "audit_scope": "Limited scope due to generation failure",
+                "methodology": "Manual review required",
+                "findings_summary": "Unable to generate findings",
+                "risk_assessment": "Risk assessment unavailable",
+                "compliance_assessment": "Compliance assessment unavailable",
+                "recommendations": ["Manual audit review required"],
+                "appendices": []
             }
 
 
-class ReportGenerationTool(Tool):
-    """Generate audit reports"""
+class ValidationReportGeneratorTool(Tool):
+    """Tool for generating validation reports"""
     
     def __init__(self):
-        super().__init__("generate_report", "Generate comprehensive audit report")
+        super().__init__("generate_validation_report", "Generate validation report")
     
-    async def execute(self, audit_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Generate audit report"""
+    async def execute(self, audit_bundle: Dict, **kwargs) -> Dict[str, Any]:
+        """Generate validation report for audit bundle"""
         try:
             from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
+            from langchain.schema import HumanMessage, SystemMessage
             
             llm = ChatOpenAI(model="gpt-4", temperature=0.1)
             
-            # Prepare report data
-            report_data = {
-                "trace_summary": audit_data.get("trace", {}),
-                "findings": audit_data.get("findings", []),
-                "entities": audit_data.get("entities", []),
-                "audit_log": audit_data.get("audit_log", {})
+            system_prompt = """You are an expert audit validator. Generate a validation report for an audit bundle.
+            
+            For each validation check, provide:
+            - check_id: Unique check identifier
+            - check_type: Type of validation check
+            - status: PASS/FAIL/WARNING
+            - description: Description of check
+            - criteria: Validation criteria
+            - result: Validation result
+            - confidence: Confidence in validation (0.0-1.0)
+            - recommendations: Validation recommendations
+            
+            Also provide:
+            - overall_validation_score: Overall validation score (0.0-1.0)
+            - validation_summary: Overall validation assessment
+            - bundle_quality: Assessment of bundle quality
+            - regulatory_acceptance: Likelihood of regulatory acceptance
+            
+            Respond with JSON:
+            {
+                "validation_checks": [
+                    {
+                        "check_id": "val_001",
+                        "check_type": "completeness",
+                        "status": "PASS",
+                        "description": "Audit bundle completeness check",
+                        "criteria": "All required sections present",
+                        "result": "All sections found",
+                        "confidence": 0.95,
+                        "recommendations": "Bundle is complete"
+                    }
+                ],
+                "overall_validation_score": 0.9,
+                "validation_summary": "Audit bundle passes validation",
+                "bundle_quality": "HIGH",
+                "regulatory_acceptance": "LIKELY"
             }
+            """
             
-            prompt = f"""
-Generate a comprehensive audit report based on this data. Respond with JSON only.
-
-AUDIT DATA:
-{json.dumps(report_data, indent=2, default=str)}
-
-TASK:
-1. Create executive summary
-2. List key findings and risks
-3. Provide compliance assessment
-4. Suggest recommendations
-5. Include technical details
-
-Respond with JSON:
-{{
-    "executive_summary": "summary text",
-    "key_findings": [
-        {{
-            "finding": "finding description",
-            "severity": "high/medium/low",
-            "impact": "impact description"
-        }}
-    ],
-    "compliance_assessment": "assessment text",
-    "recommendations": ["rec1", "rec2"],
-    "technical_details": {{
-        "total_agents": 5,
-        "processing_time": "2.5 minutes",
-        "confidence_score": 0.85
-    }},
-    "risk_score": 0.75
-}}
-"""
+            user_prompt = f"Validate this audit bundle:\n\nAUDIT BUNDLE:\n{json.dumps(audit_bundle, indent=2)}"
             
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
             result_text = response.generations[0][0].text.strip()
             
-            # Extract JSON
+            # Extract JSON from response
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0]
             elif "```" in result_text:
@@ -136,269 +382,160 @@ Respond with JSON:
             
         except Exception as e:
             return {
-                "executive_summary": f"Report generation failed: {str(e)}",
-                "key_findings": [],
-                "compliance_assessment": "Unable to assess",
-                "recommendations": ["Manual review required"],
-                "technical_details": {},
-                "risk_score": 0.0
-            }
-
-
-class ExportBundleTool(Tool):
-    """Create exportable audit bundle"""
-    
-    def __init__(self):
-        super().__init__("export_bundle", "Create exportable audit bundle")
-    
-    async def execute(self, audit_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Create export bundle with all data"""
-        try:
-            # Create bundle structure
-            bundle = {
-                "metadata": {
-                    "created_at": datetime.utcnow().isoformat(),
-                    "version": "1.0",
-                    "format": "audit_bundle"
-                },
-                "document_info": audit_data.get("document", {}),
-                "trace_info": audit_data.get("trace", {}),
-                "findings": audit_data.get("findings", []),
-                "entities": audit_data.get("entities", []),
-                "audit_log": audit_data.get("audit_log", {}),
-                "report": audit_data.get("report", {}),
-                "export_info": {
-                    "total_files": 4,  # JSON, CSV, PDF, ZIP
-                    "bundle_size": "estimated_size",
-                    "hash": "bundle_hash"
-                }
-            }
-            
-            # Calculate bundle hash
-            bundle_data = json.dumps(bundle, sort_keys=True, default=str)
-            bundle_hash = hashlib.sha256(bundle_data.encode()).hexdigest()
-            bundle["export_info"]["hash"] = bundle_hash
-            
-            return bundle
-            
-        except Exception as e:
-            return {
-                "error": str(e),
-                "metadata": {"created_at": datetime.utcnow().isoformat()}
-            }
-
-
-class ComplianceValidationTool(Tool):
-    """Validate compliance with audit requirements"""
-    
-    def __init__(self):
-        super().__init__("compliance_validation", "Validate audit compliance")
-    
-    async def execute(self, audit_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Validate compliance"""
-        try:
-            from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
-            
-            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
-            
-            prompt = f"""
-Validate this audit for compliance with regulatory requirements. Respond with JSON only.
-
-AUDIT DATA:
-{json.dumps(audit_data, indent=2, default=str)}
-
-COMPLIANCE REQUIREMENTS:
-- Complete audit trail
-- Tamper evidence
-- Risk assessment
-- Entity extraction
-- Policy evaluation
-
-TASK:
-1. Check completeness
-2. Validate tamper evidence
-3. Assess compliance score
-4. Identify gaps
-
-Respond with JSON:
-{{
-    "compliance_score": 0.85,
-    "completeness": "complete/partial/incomplete",
-    "tamper_evidence": "valid/invalid",
-    "gaps": ["gap1", "gap2"],
-    "recommendations": ["rec1", "rec2"],
-    "validation_status": "passed/failed"
-}}
-"""
-            
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
-            result_text = response.generations[0][0].text.strip()
-            
-            # Extract JSON
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0]
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1]
-            
-            return json.loads(result_text)
-            
-        except Exception as e:
-            return {
-                "compliance_score": 0.0,
-                "completeness": "incomplete",
-                "tamper_evidence": "invalid",
-                "gaps": [f"Validation failed: {str(e)}"],
-                "recommendations": ["Manual validation required"],
-                "validation_status": "failed"
+                "validation_checks": [],
+                "overall_validation_score": 0.0,
+                "validation_summary": f"Validation report generation failed: {str(e)}",
+                "bundle_quality": "UNKNOWN",
+                "regulatory_acceptance": "UNKNOWN"
             }
 
 
 class AuditAgent(BaseAgent):
-    """Agent responsible for audit trail generation and compliance validation"""
+    """Agent responsible for audit trail generation and compliance reporting"""
     
     def __init__(self, llm_model: str = "gpt-4"):
         super().__init__("AuditAgent", AgentType.AUDIT)
         self.llm = ChatOpenAI(model=llm_model, temperature=0.1)
         
         # Add tools
-        self.add_tool(AuditLogTool())
-        self.add_tool(ReportGenerationTool())
-        self.add_tool(ExportBundleTool())
-        self.add_tool(ComplianceValidationTool())
+        self.add_tool(AuditTrailGeneratorTool())
+        self.add_tool(ComplianceReportGeneratorTool())
+        self.add_tool(AuditBundleGeneratorTool())
+        self.add_tool(ValidationReportGeneratorTool())
     
     async def run(self, goal: str, context: Dict[str, Any]) -> AgentResult:
         """Main audit process"""
-        trace = context.get("trace")
-        if not trace:
+        document = context.get("document")
+        if not document:
             return AgentResult(
                 output=None,
-                rationale="No trace data available for audit",
+                rationale="No document provided in context",
                 confidence=0.0,
-                next_suggested_action="Provide trace data in context"
+                next_suggested_action="Provide document in context"
             )
         
         try:
-            # Extract data from context
-            document = context.get("document")
-            findings = context.get("findings", [])
-            entities = context.get("entities", [])
+            # Get processing history and assessments
+            processing_history = context.get("processing_history", [])
+            risk_assessment = document.metadata.get("risk_assessment", {}) if hasattr(document, 'metadata') else {}
             
-            # Create audit log
-            audit_tool = self.get_tool("audit_log")
-            audit_log = await audit_tool.execute(
-                trace_id=trace.trace_id,
-                steps=[step.dict() for step in trace.steps]
+            # Generate audit trail
+            audit_trail_tool = self.get_tool("generate_audit_trail")
+            audit_trail = await audit_trail_tool.execute(
+                document=document,
+                processing_history=processing_history
             )
             
-            # Generate report
-            report_tool = self.get_tool("generate_report")
-            audit_data = {
-                "trace": trace.dict(),
-                "document": document.dict() if document else {},
-                "findings": [f.dict() for f in findings] if findings else [],
-                "entities": [e.dict() for e in entities] if entities else [],
-                "audit_log": audit_log
-            }
+            # Generate compliance report
+            compliance_tool = self.get_tool("generate_compliance_report")
+            compliance_report = await compliance_tool.execute(
+                document=document,
+                risk_assessment=risk_assessment,
+                audit_trail=audit_trail
+            )
             
-            report = await report_tool.execute(audit_data=audit_data)
+            # Generate audit bundle
+            bundle_tool = self.get_tool("generate_audit_bundle")
+            audit_bundle = await bundle_tool.execute(
+                document=document,
+                audit_trail=audit_trail,
+                compliance_report=compliance_report,
+                risk_assessment=risk_assessment
+            )
             
-            # Validate compliance
-            validation_tool = self.get_tool("compliance_validation")
-            validation = await validation_tool.execute(audit_data=audit_data)
+            # Generate validation report
+            validation_tool = self.get_tool("generate_validation_report")
+            validation_report = await validation_tool.execute(
+                audit_bundle=audit_bundle
+            )
             
-            # Create export bundle
-            export_tool = self.get_tool("export_bundle")
-            bundle_data = {
-                **audit_data,
-                "report": report,
-                "validation": validation
-            }
-            
-            export_bundle = await export_tool.execute(audit_data=bundle_data)
-            
-            # Create audit bundle object
-            audit_bundle = AuditBundle(
-                document_id=getattr(document, 'id', 'unknown') if document else 'unknown',
-                trace_id=trace.trace_id,
-                findings=findings,
-                entities=entities,
-                metadata={
-                    "audit_log": audit_log,
-                    "report": report,
-                    "validation": validation,
-                    "export_bundle": export_bundle
+            # Create comprehensive audit result
+            audit_result = {
+                "audit_id": f"audit_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+                "document_info": {
+                    "id": getattr(document, 'id', 'unknown'),
+                    "type": document.doc_type.value if hasattr(document, 'doc_type') and document.doc_type else "unknown",
+                    "filename": getattr(document, 'filename', 'unknown')
                 },
-                hash=export_bundle.get("export_info", {}).get("hash", "")
+                "audit_components": {
+                    "audit_trail": audit_trail,
+                    "compliance_report": compliance_report,
+                    "audit_bundle": audit_bundle,
+                    "validation_report": validation_report
+                },
+                "audit_metadata": {
+                    "audited_at": datetime.utcnow().isoformat(),
+                    "audit_level": audit_bundle.get("audit_level", "STANDARD"),
+                    "regulatory_frameworks": audit_bundle.get("regulatory_frameworks", []),
+                    "compliance_score": compliance_report.get("overall_compliance_score", 0.0),
+                    "validation_score": validation_report.get("overall_validation_score", 0.0)
+                }
+            }
+            
+            # Calculate confidence
+            confidence = self._calculate_confidence(
+                audit_trail,
+                compliance_report,
+                audit_bundle,
+                validation_report
             )
-            
-            # Calculate overall confidence
-            compliance_score = validation.get("compliance_score", 0.0)
-            validation_status = validation.get("validation_status", "failed")
-            
-            if validation_status == "passed" and compliance_score > 0.8:
-                overall_confidence = 0.9
-            elif validation_status == "passed":
-                overall_confidence = compliance_score
-            else:
-                overall_confidence = 0.5
             
             # Generate rationale
-            rationale = f"Audit completed with {len(audit_log.get('entries', []))} entries. Compliance score: {compliance_score:.2f}. Status: {validation_status}"
+            compliance_score = compliance_report.get("overall_compliance_score", 0.0)
+            validation_score = validation_report.get("overall_validation_score", 0.0)
+            audit_events = len(audit_trail.get("audit_events", []))
+            compliance_findings = len(compliance_report.get("compliance_findings", []))
+            
+            rationale = f"Audit completed: {audit_events} audit events, {compliance_findings} compliance findings. Compliance score: {compliance_score:.2f}, Validation score: {validation_score:.2f}"
             
             return AgentResult(
-                output=audit_bundle,
+                output=audit_result,
                 rationale=rationale,
-                confidence=overall_confidence,
-                next_suggested_action="Export audit bundle" if validation_status == "passed" else "Address compliance gaps"
+                confidence=confidence,
+                next_suggested_action="Review audit results and address any compliance issues",
+                metadata={
+                    "audit_trail": audit_trail,
+                    "compliance_report": compliance_report,
+                    "audit_bundle": audit_bundle,
+                    "validation_report": validation_report
+                }
             )
             
         except Exception as e:
             return AgentResult(
-                output=AuditBundle(
-                    document_id="unknown",
-                    trace_id=trace.trace_id if trace else "unknown",
-                    findings=[],
-                    entities=[],
-                    metadata={"error": str(e)},
-                    hash=""
-                ),
-                rationale=f"Audit failed: {str(e)}",
+                output=None,
+                rationale=f"Audit process failed: {str(e)}",
                 confidence=0.0,
                 next_suggested_action="Manual audit required"
             )
     
-    def get_audit_summary(self, audit_bundle: AuditBundle) -> Dict[str, Any]:
-        """Get summary of audit bundle"""
-        return {
-            "document_id": audit_bundle.document_id,
-            "trace_id": audit_bundle.trace_id,
-            "findings_count": len(audit_bundle.findings),
-            "entities_count": len(audit_bundle.entities),
-            "compliance_score": audit_bundle.metadata.get("validation", {}).get("compliance_score", 0.0),
-            "validation_status": audit_bundle.metadata.get("validation", {}).get("validation_status", "unknown"),
-            "created_at": audit_bundle.created_at.isoformat(),
-            "hash": audit_bundle.hash
-        }
-    
-    def validate_audit_integrity(self, audit_bundle: AuditBundle) -> Dict[str, Any]:
-        """Validate audit bundle integrity"""
-        try:
-            # Check hash consistency
-            bundle_data = json.dumps(audit_bundle.dict(), sort_keys=True, default=str)
-            calculated_hash = hashlib.sha256(bundle_data.encode()).hexdigest()
-            
-            is_valid = calculated_hash == audit_bundle.hash
-            
-            return {
-                "integrity_valid": is_valid,
-                "calculated_hash": calculated_hash,
-                "stored_hash": audit_bundle.hash,
-                "validation_timestamp": datetime.utcnow().isoformat()
-            }
-        except Exception as e:
-            return {
-                "integrity_valid": False,
-                "error": str(e),
-                "validation_timestamp": datetime.utcnow().isoformat()
-            }
+    def _calculate_confidence(self, audit_trail: Dict, compliance_report: Dict, audit_bundle: Dict, validation_report: Dict) -> float:
+        """Calculate confidence based on audit results"""
+        confidence = 0.5  # Base confidence
+        
+        # Audit trail confidence
+        audit_events = audit_trail.get("audit_events", [])
+        if audit_events:
+            avg_event_confidence = sum(event.get("confidence", 0.5) for event in audit_events if "confidence" in event) / len(audit_events)
+            confidence += avg_event_confidence * 0.2
+        
+        # Compliance report confidence
+        compliance_score = compliance_report.get("overall_compliance_score", 0.0)
+        confidence += compliance_score * 0.2
+        
+        # Audit bundle confidence
+        bundle_quality = audit_bundle.get("bundle_quality", "UNKNOWN")
+        if bundle_quality == "HIGH":
+            confidence += 0.1
+        elif bundle_quality == "MEDIUM":
+            confidence += 0.05
+        
+        # Validation report confidence
+        validation_score = validation_report.get("overall_validation_score", 0.0)
+        confidence += validation_score * 0.2
+        
+        # Overall completeness
+        if audit_events and compliance_report.get("compliance_findings"):
+            confidence += 0.1
+        
+        return min(1.0, max(0.0, confidence))
