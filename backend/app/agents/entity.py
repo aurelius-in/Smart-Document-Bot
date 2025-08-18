@@ -1,339 +1,431 @@
+import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage
+from langchain.schema import HumanMessage, SystemMessage
 
 from .base import BaseAgent, Tool
-from ..models.base import AgentResult, AgentType, Entity
+from ..models.base import AgentResult, AgentType, Document, Entity
 
 
-class NERTool(Tool):
-    """Named Entity Recognition tool"""
+class NamedEntityRecognitionTool(Tool):
+    """Tool for extracting named entities using LLM"""
     
     def __init__(self):
-        super().__init__("ner", "Extract named entities from text")
+        super().__init__("ner", "Extract named entities using LLM-based NER")
     
-    async def execute(self, text: str, **kwargs) -> List[Dict[str, Any]]:
-        """Extract named entities"""
+    async def execute(self, content: str, doc_type: str, **kwargs) -> List[Dict[str, Any]]:
+        """Extract named entities from document content"""
         try:
             from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
+            from langchain.schema import HumanMessage, SystemMessage
             
             llm = ChatOpenAI(model="gpt-4", temperature=0.1)
             
-            prompt = f"""
-Extract named entities from this text. Respond with JSON only.
-
-TEXT (first 2000 characters):
-{text[:2000]}...
-
-ENTITY TYPES TO EXTRACT:
-- PERSON: Names of people
-- ORGANIZATION: Company names, institutions
-- DATE: Dates, deadlines, time periods
-- MONEY: Monetary amounts, currency
-- PERCENT: Percentages
-- LOCATION: Addresses, cities, countries
-- POLICY_REF: Policy numbers, regulation references
-- CLAUSE: Legal clauses, contract terms
-- OBLIGATION: Requirements, duties, responsibilities
-- RISK: Risk factors, liabilities, penalties
-
-For each entity, provide:
-- text: the actual text
-- label: entity type
-- start: character position (approximate)
-- end: character position (approximate)
-- confidence: 0.0-1.0
-- page: page number (estimate)
-
-Respond with JSON:
-{{
-    "entities": [
-        {{
-            "text": "entity text",
-            "label": "ENTITY_TYPE",
-            "start": 123,
-            "end": 135,
-            "confidence": 0.9,
-            "page": 1
-        }}
-    ],
-    "overall_confidence": 0.85
-}}
-"""
+            # Define entity types based on document type
+            entity_types = self._get_entity_types(doc_type)
             
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
+            system_prompt = f"""You are an expert named entity recognition system for {doc_type} documents.
+            Extract all named entities from the document content.
+            
+            ENTITY TYPES TO EXTRACT: {', '.join(entity_types)}
+            
+            For each entity found, provide:
+            - text: The exact text of the entity
+            - label: The entity type
+            - start: Character position where entity starts
+            - end: Character position where entity ends
+            - confidence: Confidence score (0.0-1.0)
+            
+            Respond with JSON array:
+            [
+                {{
+                    "text": "entity text",
+                    "label": "entity_type",
+                    "start": 123,
+                    "end": 135,
+                    "confidence": 0.95
+                }}
+            ]
+            """
+            
+            user_prompt = f"Extract entities from this {doc_type} document:\n\n{content[:3000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
             result_text = response.generations[0][0].text.strip()
             
-            # Extract JSON
+            # Extract JSON from response
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0]
             elif "```" in result_text:
                 result_text = result_text.split("```")[1]
             
-            import json
-            result = json.loads(result_text)
-            return result.get("entities", [])
+            entities = json.loads(result_text)
+            
+            # Validate and clean entities
+            cleaned_entities = []
+            for entity in entities:
+                if self._validate_entity(entity, content):
+                    cleaned_entities.append(entity)
+            
+            return cleaned_entities
             
         except Exception as e:
             return []
+    
+    def _get_entity_types(self, doc_type: str) -> List[str]:
+        """Get entity types based on document type"""
+        base_types = ["PERSON", "ORGANIZATION", "DATE", "MONEY", "LOCATION"]
+        
+        type_mapping = {
+            "contract": base_types + ["PARTY", "EFFECTIVE_DATE", "TERMINATION_DATE", "AMOUNT", "JURISDICTION"],
+            "invoice": base_types + ["INVOICE_NUMBER", "VENDOR", "CUSTOMER", "DUE_DATE", "TAX_AMOUNT"],
+            "policy": base_types + ["POLICY_NUMBER", "INSURED", "COVERAGE_TYPE", "PREMIUM", "EFFECTIVE_DATE"],
+            "regulation": base_types + ["REGULATION_NUMBER", "JURISDICTION", "EFFECTIVE_DATE", "COMPLIANCE_DEADLINE"],
+            "financial_statement": base_types + ["PERIOD", "REVENUE", "EXPENSE", "ASSET", "LIABILITY"],
+            "medical_record": base_types + ["PATIENT_ID", "DIAGNOSIS", "TREATMENT", "MEDICATION", "PROVIDER"]
+        }
+        
+        return type_mapping.get(doc_type, base_types)
+    
+    def _validate_entity(self, entity: Dict[str, Any], content: str) -> bool:
+        """Validate extracted entity"""
+        required_fields = ["text", "label", "start", "end", "confidence"]
+        
+        # Check required fields
+        for field in required_fields:
+            if field not in entity:
+                return False
+        
+        # Validate text matches content
+        start = entity.get("start", 0)
+        end = entity.get("end", 0)
+        if start >= len(content) or end > len(content) or start >= end:
+            return False
+        
+        extracted_text = content[start:end]
+        if extracted_text != entity["text"]:
+            return False
+        
+        # Validate confidence
+        confidence = entity.get("confidence", 0)
+        if not (0.0 <= confidence <= 1.0):
+            return False
+        
+        return True
 
 
 class ClauseExtractionTool(Tool):
-    """Extract legal clauses and contract terms"""
+    """Tool for extracting legal clauses and key sections"""
     
     def __init__(self):
-        super().__init__("clause_extract", "Extract legal clauses and contract terms")
+        super().__init__("extract_clauses", "Extract legal clauses and key sections from documents")
     
-    async def execute(self, text: str, doc_type: str, **kwargs) -> List[Dict[str, Any]]:
-        """Extract clauses based on document type"""
+    async def execute(self, content: str, doc_type: str, **kwargs) -> List[Dict[str, Any]]:
+        """Extract clauses and key sections"""
         try:
             from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
+            from langchain.schema import HumanMessage, SystemMessage
             
             llm = ChatOpenAI(model="gpt-4", temperature=0.1)
             
-            clause_types = {
-                "contract": ["termination", "liability", "confidentiality", "payment", "governing_law"],
-                "policy": ["coverage", "exclusions", "deductibles", "claims", "cancellation"],
-                "regulation": ["requirements", "prohibitions", "penalties", "compliance", "reporting"],
-                "legal_document": ["relief", "jurisdiction", "venue", "damages", "injunction"]
-            }
+            clause_types = self._get_clause_types(doc_type)
             
-            types = clause_types.get(doc_type, ["general", "obligation", "rights"])
+            system_prompt = f"""You are an expert legal document analyzer. Extract key clauses and sections from this {doc_type} document.
             
-            prompt = f"""
-Extract legal clauses from this {doc_type} document. Respond with JSON only.
-
-TEXT (first 2500 characters):
-{text[:2500]}...
-
-CLAUSE TYPES TO EXTRACT: {types}
-
-For each clause, provide:
-- text: the clause text
-- type: clause type
-- start: character position
-- end: character position
-- confidence: 0.0-1.0
-- page: page number
-- importance: high/medium/low
-
-Respond with JSON:
-{{
-    "clauses": [
-        {{
-            "text": "clause text",
-            "type": "clause_type",
-            "start": 123,
-            "end": 456,
-            "confidence": 0.9,
-            "page": 1,
-            "importance": "high"
-        }}
-    ],
-    "overall_confidence": 0.85
-}}
-"""
+            CLAUSE TYPES TO EXTRACT: {', '.join(clause_types)}
             
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
+            For each clause found, provide:
+            - title: Clause title or section name
+            - content: The full clause text
+            - type: Type of clause
+            - start: Character position where clause starts
+            - end: Character position where clause ends
+            - importance: High/Medium/Low importance
+            
+            Respond with JSON array:
+            [
+                {{
+                    "title": "clause title",
+                    "content": "full clause text",
+                    "type": "clause_type",
+                    "start": 123,
+                    "end": 456,
+                    "importance": "High"
+                }}
+            ]
+            """
+            
+            user_prompt = f"Extract clauses from this {doc_type} document:\n\n{content[:4000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
             result_text = response.generations[0][0].text.strip()
             
-            # Extract JSON
+            # Extract JSON from response
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0]
             elif "```" in result_text:
                 result_text = result_text.split("```")[1]
             
-            import json
-            result = json.loads(result_text)
-            return result.get("clauses", [])
+            clauses = json.loads(result_text)
+            
+            # Validate clauses
+            valid_clauses = []
+            for clause in clauses:
+                if self._validate_clause(clause, content):
+                    valid_clauses.append(clause)
+            
+            return valid_clauses
             
         except Exception as e:
             return []
+    
+    def _get_clause_types(self, doc_type: str) -> List[str]:
+        """Get clause types based on document type"""
+        base_types = ["GENERAL", "DEFINITIONS", "TERMINATION", "AMENDMENT"]
+        
+        type_mapping = {
+            "contract": base_types + ["PAYMENT_TERMS", "LIABILITY", "INDEMNIFICATION", "FORCE_MAJEURE", "GOVERNING_LAW"],
+            "policy": base_types + ["COVERAGE", "EXCLUSIONS", "CLAIMS_PROCEDURE", "PREMIUM_PAYMENT"],
+            "regulation": base_types + ["COMPLIANCE_REQUIREMENTS", "PENALTIES", "ENFORCEMENT", "EXEMPTIONS"],
+            "legal_document": base_types + ["RELIEF_SOUGHT", "JURISDICTION", "SERVICE_OF_PROCESS"]
+        }
+        
+        return type_mapping.get(doc_type, base_types)
+    
+    def _validate_clause(self, clause: Dict[str, Any], content: str) -> bool:
+        """Validate extracted clause"""
+        required_fields = ["title", "content", "type", "start", "end", "importance"]
+        
+        # Check required fields
+        for field in required_fields:
+            if field not in clause:
+                return False
+        
+        # Validate content matches
+        start = clause.get("start", 0)
+        end = clause.get("end", 0)
+        if start >= len(content) or end > len(content) or start >= end:
+            return False
+        
+        extracted_content = content[start:end]
+        if not clause["content"].strip() in extracted_content:
+            return False
+        
+        # Validate importance
+        importance = clause.get("importance", "").upper()
+        if importance not in ["HIGH", "MEDIUM", "LOW"]:
+            return False
+        
+        return True
 
 
-class UncertaintyDetectionTool(Tool):
-    """Detect uncertain or ambiguous entities"""
+class KeyInformationExtractionTool(Tool):
+    """Tool for extracting key information and metadata"""
     
     def __init__(self):
-        super().__init__("uncertainty_detect", "Detect uncertain or ambiguous entities")
+        super().__init__("extract_key_info", "Extract key information and metadata from documents")
     
-    async def execute(self, entities: List[Dict[str, Any]], text: str, **kwargs) -> List[Dict[str, Any]]:
-        """Detect uncertain entities"""
-        uncertain_entities = []
+    async def execute(self, content: str, doc_type: str, **kwargs) -> Dict[str, Any]:
+        """Extract key information"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
+            
+            info_types = self._get_info_types(doc_type)
+            
+            system_prompt = f"""You are an expert document analyzer. Extract key information from this {doc_type} document.
+            
+            INFORMATION TYPES TO EXTRACT: {', '.join(info_types)}
+            
+            For each piece of information, provide:
+            - type: Information type
+            - value: Extracted value
+            - confidence: Confidence score (0.0-1.0)
+            - location: Where in document (page/section)
+            
+            Respond with JSON:
+            {{
+                "key_information": [
+                    {{
+                        "type": "info_type",
+                        "value": "extracted_value",
+                        "confidence": 0.95,
+                        "location": "page 1, section 2"
+                    }}
+                ],
+                "summary": "Brief summary of key findings",
+                "total_items": 5
+            }}
+            """
+            
+            user_prompt = f"Extract key information from this {doc_type} document:\n\n{content[:3000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            return json.loads(result_text)
+            
+        except Exception as e:
+            return {
+                "key_information": [],
+                "summary": f"Extraction failed: {str(e)}",
+                "total_items": 0
+            }
+    
+    def _get_info_types(self, doc_type: str) -> List[str]:
+        """Get information types based on document type"""
+        base_types = ["TITLE", "DATE", "AUTHOR", "VERSION"]
         
-        uncertainty_patterns = [
-            r'\b(approximately|about|around|roughly|estimated)\b',
-            r'\b(may|might|could|should|would)\b',
-            r'\b(subject to|pending|conditional|tentative)\b',
-            r'\b(TBD|TBA|to be determined|to be announced)\b'
-        ]
+        type_mapping = {
+            "contract": base_types + ["PARTIES", "EFFECTIVE_DATE", "TERM", "VALUE", "JURISDICTION"],
+            "invoice": base_types + ["INVOICE_NUMBER", "DUE_DATE", "TOTAL_AMOUNT", "VENDOR", "CUSTOMER"],
+            "policy": base_types + ["POLICY_NUMBER", "INSURED", "COVERAGE_AMOUNT", "PREMIUM", "TERM"],
+            "regulation": base_types + ["REGULATION_NUMBER", "JURISDICTION", "EFFECTIVE_DATE", "COMPLIANCE_DEADLINE"],
+            "financial_statement": base_types + ["PERIOD", "REVENUE", "NET_INCOME", "TOTAL_ASSETS", "TOTAL_LIABILITIES"]
+        }
         
-        for entity in entities:
-            entity_text = entity.get("text", "")
-            confidence = entity.get("confidence", 0.0)
-            
-            # Check for uncertainty patterns
-            is_uncertain = False
-            uncertainty_reasons = []
-            
-            # Low confidence
-            if confidence < 0.7:
-                is_uncertain = True
-                uncertainty_reasons.append("low_confidence")
-            
-            # Uncertainty patterns in text
-            for pattern in uncertainty_patterns:
-                if re.search(pattern, entity_text, re.IGNORECASE):
-                    is_uncertain = True
-                    uncertainty_reasons.append("uncertainty_pattern")
-                    break
-            
-            # Ambiguous text
-            if len(entity_text.strip()) < 3 or entity_text.lower() in ["the", "and", "or", "of", "in", "on"]:
-                is_uncertain = True
-                uncertainty_reasons.append("ambiguous_text")
-            
-            if is_uncertain:
-                entity["uncertainty"] = {
-                    "is_uncertain": True,
-                    "reasons": uncertainty_reasons,
-                    "suggested_action": "manual_review" if confidence < 0.5 else "verify"
-                }
-                uncertain_entities.append(entity)
-        
-        return uncertain_entities
+        return type_mapping.get(doc_type, base_types)
 
 
 class EntityAgent(BaseAgent):
-    """Agent responsible for entity extraction and clause identification"""
+    """Agent responsible for entity extraction and information extraction"""
     
     def __init__(self, llm_model: str = "gpt-4"):
         super().__init__("EntityAgent", AgentType.ENTITY)
         self.llm = ChatOpenAI(model=llm_model, temperature=0.1)
         
         # Add tools
-        self.add_tool(NERTool())
+        self.add_tool(NamedEntityRecognitionTool())
         self.add_tool(ClauseExtractionTool())
-        self.add_tool(UncertaintyDetectionTool())
+        self.add_tool(KeyInformationExtractionTool())
     
     async def run(self, goal: str, context: Dict[str, Any]) -> AgentResult:
         """Main entity extraction process"""
-        document = context.get("classifier_result")
-        if not document or not hasattr(document, 'content'):
+        document = context.get("document")
+        if not document:
             return AgentResult(
                 output=None,
-                rationale="No document content available from classification",
+                rationale="No document provided in context",
                 confidence=0.0,
-                next_suggested_action="Ensure document is classified first"
+                next_suggested_action="Provide document in context"
             )
         
         try:
+            doc_type = document.doc_type.value if document.doc_type else "unknown"
+            
             # Extract named entities
             ner_tool = self.get_tool("ner")
-            entities = await ner_tool.execute(text=document.content)
+            entities = await ner_tool.execute(content=document.content, doc_type=doc_type)
             
             # Extract clauses
-            clause_tool = self.get_tool("clause_extract")
-            doc_type = document.doc_type.value if document.doc_type else "unknown"
-            clauses = await clause_tool.execute(text=document.content, doc_type=doc_type)
+            clause_tool = self.get_tool("extract_clauses")
+            clauses = await clause_tool.execute(content=document.content, doc_type=doc_type)
             
-            # Detect uncertainty
-            uncertainty_tool = self.get_tool("uncertainty_detect")
-            uncertain_entities = await uncertainty_tool.execute(
-                entities=entities + clauses,
-                text=document.content
-            )
+            # Extract key information
+            key_info_tool = self.get_tool("extract_key_info")
+            key_info = await key_info_tool.execute(content=document.content, doc_type=doc_type)
             
-            # Convert to Entity objects
+            # Convert entities to Entity objects
             entity_objects = []
-            for entity_data in entities:
-                entity = Entity(
-                    text=entity_data.get("text", ""),
-                    label=entity_data.get("label", "UNKNOWN"),
-                    start=entity_data.get("start", 0),
-                    end=entity_data.get("end", 0),
-                    confidence=entity_data.get("confidence", 0.0),
-                    page=entity_data.get("page", 1),
-                    metadata=entity_data
+            for entity in entities:
+                entity_obj = Entity(
+                    text=entity["text"],
+                    label=entity["label"],
+                    start=entity["start"],
+                    end=entity["end"],
+                    confidence=entity["confidence"],
+                    page=1,  # Default to page 1 for now
+                    metadata={
+                        "extraction_method": "llm_ner",
+                        "extracted_at": datetime.utcnow().isoformat()
+                    }
                 )
-                entity_objects.append(entity)
-            
-            # Add clauses as entities
-            for clause_data in clauses:
-                entity = Entity(
-                    text=clause_data.get("text", ""),
-                    label=f"CLAUSE_{clause_data.get('type', 'GENERAL').upper()}",
-                    start=clause_data.get("start", 0),
-                    end=clause_data.get("end", 0),
-                    confidence=clause_data.get("confidence", 0.0),
-                    page=clause_data.get("page", 1),
-                    metadata=clause_data
-                )
-                entity_objects.append(entity)
-            
-            # Calculate overall confidence
-            total_entities = len(entity_objects)
-            if total_entities == 0:
-                overall_confidence = 0.0
-            else:
-                avg_confidence = sum(e.confidence for e in entity_objects) / total_entities
-                uncertainty_penalty = len(uncertain_entities) / total_entities * 0.2
-                overall_confidence = max(0.0, avg_confidence - uncertainty_penalty)
+                entity_objects.append(entity_obj)
             
             # Update document metadata
             document.metadata.update({
-                "entities": [e.dict() for e in entity_objects],
-                "entity_count": len(entities),
-                "clause_count": len(clauses),
-                "uncertain_entities": len(uncertain_entities),
-                "entity_extraction_confidence": overall_confidence
+                "entities": [entity.dict() for entity in entity_objects],
+                "clauses": clauses,
+                "key_information": key_info,
+                "entity_extraction": {
+                    "total_entities": len(entity_objects),
+                    "total_clauses": len(clauses),
+                    "key_info_items": key_info.get("total_items", 0),
+                    "extracted_at": datetime.utcnow().isoformat()
+                }
             })
             
-            # Generate rationale
-            rationale = f"Extracted {len(entities)} entities and {len(clauses)} clauses. {len(uncertain_entities)} entities flagged for review."
-            
-            next_action = "Proceed to risk assessment"
-            if len(uncertain_entities) > len(entity_objects) * 0.3:  # More than 30% uncertain
-                next_action = "Manual review recommended due to high uncertainty"
+            # Calculate confidence
+            confidence = self._calculate_confidence(entities, clauses, key_info)
             
             return AgentResult(
-                output=entity_objects,
-                rationale=rationale,
-                confidence=overall_confidence,
-                next_suggested_action=next_action
+                output=document,
+                rationale=f"Extracted {len(entity_objects)} entities, {len(clauses)} clauses, and {key_info.get('total_items', 0)} key information items from {doc_type} document.",
+                confidence=confidence,
+                next_suggested_action="Proceed to risk assessment",
+                metadata={
+                    "entities": entities,
+                    "clauses": clauses,
+                    "key_information": key_info
+                }
             )
             
         except Exception as e:
             return AgentResult(
-                output=[],
+                output=None,
                 rationale=f"Entity extraction failed: {str(e)}",
                 confidence=0.0,
                 next_suggested_action="Manual entity extraction required"
             )
     
-    def get_entity_statistics(self, entities: List[Entity]) -> Dict[str, Any]:
-        """Get statistics about extracted entities"""
-        if not entities:
-            return {"total": 0, "by_type": {}, "avg_confidence": 0.0}
+    def _calculate_confidence(self, entities: List[Dict], clauses: List[Dict], key_info: Dict) -> float:
+        """Calculate confidence based on extraction results"""
+        confidence = 0.5  # Base confidence
         
-        by_type = {}
-        for entity in entities:
-            label = entity.label
-            if label not in by_type:
-                by_type[label] = {"count": 0, "avg_confidence": 0.0, "total_confidence": 0.0}
-            by_type[label]["count"] += 1
-            by_type[label]["total_confidence"] += entity.confidence
+        # Entity confidence
+        if entities:
+            avg_entity_confidence = sum(e.get("confidence", 0) for e in entities) / len(entities)
+            confidence += avg_entity_confidence * 0.3
         
-        # Calculate averages
-        for label in by_type:
-            by_type[label]["avg_confidence"] = by_type[label]["total_confidence"] / by_type[label]["count"]
+        # Clause confidence
+        if clauses:
+            clause_confidence = min(1.0, len(clauses) * 0.1)  # More clauses = higher confidence
+            confidence += clause_confidence * 0.2
         
-        return {
-            "total": len(entities),
-            "by_type": by_type,
-            "avg_confidence": sum(e.confidence for e in entities) / len(entities)
-        }
+        # Key information confidence
+        key_info_items = key_info.get("total_items", 0)
+        if key_info_items > 0:
+            key_info_confidence = min(1.0, key_info_items * 0.05)
+            confidence += key_info_confidence * 0.2
+        
+        # Content length adjustment
+        if len(entities) > 10:
+            confidence += 0.1
+        
+        return min(1.0, max(0.0, confidence))

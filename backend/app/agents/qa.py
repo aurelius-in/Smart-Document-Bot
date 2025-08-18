@@ -1,325 +1,704 @@
 import json
+import re
 from typing import Any, Dict, List, Optional
+from datetime import datetime
+from enum import Enum
 
 from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+from langchain.schema import HumanMessage, SystemMessage
 
 from .base import BaseAgent, Tool
-from ..models.base import AgentResult, AgentType, QAResponse
+from ..models.base import AgentResult, AgentType, Document
 
 
-class VectorSearchTool(Tool):
-    """Vector search tool for document retrieval"""
+class QuestionType(Enum):
+    """Question type enumeration"""
+    FACTUAL = "factual"
+    ANALYTICAL = "analytical"
+    COMPLIANCE = "compliance"
+    RISK = "risk"
+    ACTION = "action"
+
+
+class QuestionDifficulty(Enum):
+    """Question difficulty enumeration"""
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+
+
+class FactualQuestionGeneratorTool(Tool):
+    """Tool for generating factual questions about document content"""
     
     def __init__(self):
-        super().__init__("vector_search", "Search documents using vector embeddings")
-        self.embeddings = OpenAIEmbeddings()
-        self.vectorstore = None
+        super().__init__("generate_factual", "Generate factual questions about document content")
     
-    async def execute(self, query: str, documents: List[str], **kwargs) -> List[Dict[str, Any]]:
-        """Search for relevant document chunks"""
-        try:
-            # Create vector store from documents
-            texts = []
-            metadatas = []
-            
-            for i, doc in enumerate(documents):
-                # Split document into chunks
-                chunks = self._chunk_text(doc, chunk_size=1000, overlap=200)
-                for j, chunk in enumerate(chunks):
-                    texts.append(chunk)
-                    metadatas.append({
-                        "doc_id": i,
-                        "chunk_id": j,
-                        "start_char": j * 800,  # Approximate
-                        "end_char": (j + 1) * 800
-                    })
-            
-            if not texts:
-                return []
-            
-            # Create vector store
-            self.vectorstore = Chroma.from_texts(
-                texts=texts,
-                embedding=self.embeddings,
-                metadatas=metadatas
-            )
-            
-            # Search
-            results = self.vectorstore.similarity_search_with_score(query, k=5)
-            
-            # Format results
-            formatted_results = []
-            for doc, score in results:
-                formatted_results.append({
-                    "content": doc.page_content,
-                    "metadata": doc.metadata,
-                    "similarity_score": 1 - score,  # Convert distance to similarity
-                    "start_char": doc.metadata.get("start_char", 0),
-                    "end_char": doc.metadata.get("end_char", 0)
-                })
-            
-            return formatted_results
-            
-        except Exception as e:
-            return []
-    
-    def _chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
-        """Split text into overlapping chunks"""
-        chunks = []
-        start = 0
-        
-        while start < len(text):
-            end = start + chunk_size
-            chunk = text[start:end]
-            
-            # Try to break at sentence boundary
-            if end < len(text):
-                last_period = chunk.rfind('.')
-                last_newline = chunk.rfind('\n')
-                break_point = max(last_period, last_newline)
-                
-                if break_point > start + chunk_size // 2:
-                    chunk = text[start:start + break_point + 1]
-                    end = start + break_point + 1
-            
-            chunks.append(chunk)
-            start = end - overlap
-        
-        return chunks
-
-
-class AnswerGenerationTool(Tool):
-    """Generate answers with citations"""
-    
-    def __init__(self):
-        super().__init__("generate_answer", "Generate answer with citations")
-    
-    async def execute(self, question: str, context_chunks: List[Dict[str, Any]], **kwargs) -> Dict[str, Any]:
-        """Generate answer based on context chunks"""
+    async def execute(self, content: str, doc_type: str, entities: List[Dict], **kwargs) -> List[Dict[str, Any]]:
+        """Generate factual questions"""
         try:
             from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
+            from langchain.schema import HumanMessage, SystemMessage
             
-            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
+            llm = ChatOpenAI(model="gpt-4", temperature=0.3)
             
-            # Prepare context
-            context_text = "\n\n".join([
-                f"Chunk {i+1} (Score: {chunk['similarity_score']:.2f}):\n{chunk['content']}"
-                for i, chunk in enumerate(context_chunks[:3])  # Top 3 chunks
-            ])
+            system_prompt = f"""You are an expert document analyst. Generate factual questions about this {doc_type} document.
             
-            prompt = f"""
-Answer the question based on the provided context. Include specific citations to the source chunks.
-
-QUESTION: {question}
-
-CONTEXT:
-{context_text}
-
-TASK:
-1. Provide a comprehensive answer based on the context
-2. Include specific citations to relevant chunks
-3. If information is not in the context, say so
-4. Provide confidence score (0.0-1.0)
-
-Respond with JSON:
-{{
-    "answer": "comprehensive answer with citations",
-    "citations": [
-        {{
-            "chunk_id": 1,
-            "content": "relevant text from chunk",
-            "start_char": 123,
-            "end_char": 456,
-            "similarity_score": 0.85
-        }}
-    ],
-    "confidence": 0.9,
-    "sources": ["chunk_1", "chunk_2"]
-}}
-"""
+            For each question, provide:
+            - question: Clear, specific question about document content
+            - answer: Accurate answer based on document content
+            - difficulty: EASY/MEDIUM/HARD
+            - category: Specific category (dates, amounts, parties, terms, etc.)
+            - confidence: Confidence in answer accuracy (0.0-1.0)
+            - source_location: Where in document the answer can be found
             
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
+            Generate 5-8 factual questions covering key information.
+            
+            Respond with JSON array:
+            [
+                {{
+                    "question": "What is the effective date of this contract?",
+                    "answer": "January 1, 2024",
+                    "difficulty": "EASY",
+                    "category": "dates",
+                    "confidence": 0.95,
+                    "source_location": "Section 1.1, page 1"
+                }}
+            ]
+            """
+            
+            # Include extracted entities for context
+            entity_context = ""
+            if entities:
+                entity_context = f"\n\nKEY ENTITIES:\n{json.dumps(entities[:10], indent=2)}"
+            
+            user_prompt = f"Generate factual questions about this {doc_type} document:{entity_context}\n\n{content[:3000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
             result_text = response.generations[0][0].text.strip()
             
-            # Extract JSON
+            # Extract JSON from response
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0]
             elif "```" in result_text:
                 result_text = result_text.split("```")[1]
             
-            return json.loads(result_text)
+            questions = json.loads(result_text)
             
-        except Exception as e:
-            return {
-                "answer": f"Unable to generate answer: {str(e)}",
-                "citations": [],
-                "confidence": 0.0,
-                "sources": []
-            }
-
-
-class KnowledgeBaseSearchTool(Tool):
-    """Search knowledge base for additional context"""
-    
-    def __init__(self):
-        super().__init__("kb_search", "Search knowledge base for additional context")
-    
-    async def execute(self, query: str, **kwargs) -> List[Dict[str, Any]]:
-        """Search knowledge base"""
-        try:
-            # In a real implementation, this would search a knowledge base
-            # For demo purposes, return mock results
+            # Validate questions
+            valid_questions = []
+            for question in questions:
+                if self._validate_question(question):
+                    valid_questions.append(question)
             
-            mock_kb = {
-                "hipaa": [
-                    "HIPAA requires covered entities to protect patient health information",
-                    "PHI must be secured and access controlled",
-                    "Breach notification is required within 60 days"
-                ],
-                "sec": [
-                    "SEC regulations require material information disclosure",
-                    "Insider trading is prohibited",
-                    "Financial statements must be accurate and complete"
-                ],
-                "contract": [
-                    "Contracts must have clear terms and conditions",
-                    "Liability clauses should be specific",
-                    "Termination clauses are important for risk management"
-                ]
-            }
-            
-            results = []
-            for topic, entries in mock_kb.items():
-                if topic.lower() in query.lower():
-                    for entry in entries:
-                        results.append({
-                            "content": entry,
-                            "source": f"KB_{topic.upper()}",
-                            "relevance": 0.8
-                        })
-            
-            return results[:3]  # Top 3 results
+            return valid_questions
             
         except Exception as e:
             return []
+    
+    def _validate_question(self, question: Dict[str, Any]) -> bool:
+        """Validate generated question"""
+        required_fields = ["question", "answer", "difficulty", "category", "confidence", "source_location"]
+        
+        # Check required fields
+        for field in required_fields:
+            if field not in question:
+                return False
+        
+        # Validate difficulty
+        difficulty = question.get("difficulty", "").upper()
+        if difficulty not in ["EASY", "MEDIUM", "HARD"]:
+            return False
+        
+        # Validate confidence
+        confidence = question.get("confidence", 0)
+        if not (0.0 <= confidence <= 1.0):
+            return False
+        
+        # Validate question and answer are not empty
+        if not question.get("question", "").strip() or not question.get("answer", "").strip():
+            return False
+        
+        return True
+
+
+class ComplianceQuestionGeneratorTool(Tool):
+    """Tool for generating compliance-related questions"""
+    
+    def __init__(self):
+        super().__init__("generate_compliance", "Generate compliance-related questions")
+    
+    async def execute(self, content: str, doc_type: str, risk_assessment: Dict, **kwargs) -> List[Dict[str, Any]]:
+        """Generate compliance questions"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.3)
+            
+            system_prompt = f"""You are an expert compliance analyst. Generate compliance-related questions about this {doc_type} document.
+            
+            Focus on:
+            - Regulatory compliance requirements
+            - Policy adherence
+            - Legal obligations
+            - Industry standards
+            - Risk mitigation measures
+            
+            For each question, provide:
+            - question: Compliance-focused question
+            - answer: Detailed compliance assessment
+            - difficulty: EASY/MEDIUM/HARD
+            - compliance_area: Specific compliance area
+            - risk_level: LOW/MEDIUM/HIGH/CRITICAL
+            - recommendation: Compliance recommendation
+            - confidence: Confidence in assessment (0.0-1.0)
+            
+            Generate 3-5 compliance questions.
+            
+            Respond with JSON array:
+            [
+                {{
+                    "question": "Does this contract comply with data privacy regulations?",
+                    "answer": "The contract includes standard data protection clauses but lacks specific GDPR compliance measures.",
+                    "difficulty": "MEDIUM",
+                    "compliance_area": "data_privacy",
+                    "risk_level": "MEDIUM",
+                    "recommendation": "Add GDPR-specific clauses and data processing agreements",
+                    "confidence": 0.85
+                }}
+            ]
+            """
+            
+            # Include risk assessment context
+            risk_context = ""
+            if risk_assessment:
+                risk_context = f"\n\nRISK ASSESSMENT:\n{json.dumps(risk_assessment, indent=2)}"
+            
+            user_prompt = f"Generate compliance questions about this {doc_type} document:{risk_context}\n\n{content[:3000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            questions = json.loads(result_text)
+            
+            # Validate questions
+            valid_questions = []
+            for question in questions:
+                if self._validate_compliance_question(question):
+                    valid_questions.append(question)
+            
+            return valid_questions
+            
+        except Exception as e:
+            return []
+    
+    def _validate_compliance_question(self, question: Dict[str, Any]) -> bool:
+        """Validate compliance question"""
+        required_fields = ["question", "answer", "difficulty", "compliance_area", "risk_level", "recommendation", "confidence"]
+        
+        # Check required fields
+        for field in required_fields:
+            if field not in question:
+                return False
+        
+        # Validate difficulty
+        difficulty = question.get("difficulty", "").upper()
+        if difficulty not in ["EASY", "MEDIUM", "HARD"]:
+            return False
+        
+        # Validate risk level
+        risk_level = question.get("risk_level", "").upper()
+        if risk_level not in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]:
+            return False
+        
+        # Validate confidence
+        confidence = question.get("confidence", 0)
+        if not (0.0 <= confidence <= 1.0):
+            return False
+        
+        return True
+
+
+class RiskQuestionGeneratorTool(Tool):
+    """Tool for generating risk-focused questions"""
+    
+    def __init__(self):
+        super().__init__("generate_risk", "Generate risk-focused questions")
+    
+    async def execute(self, content: str, doc_type: str, risk_assessment: Dict, **kwargs) -> List[Dict[str, Any]]:
+        """Generate risk questions"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.3)
+            
+            system_prompt = f"""You are an expert risk analyst. Generate risk-focused questions about this {doc_type} document.
+            
+            Focus on:
+            - Financial risks
+            - Operational risks
+            - Legal risks
+            - Reputational risks
+            - Mitigation strategies
+            
+            For each question, provide:
+            - question: Risk-focused question
+            - answer: Detailed risk analysis
+            - difficulty: EASY/MEDIUM/HARD
+            - risk_category: Specific risk category
+            - severity: LOW/MEDIUM/HIGH/CRITICAL
+            - mitigation: Risk mitigation strategy
+            - confidence: Confidence in analysis (0.0-1.0)
+            
+            Generate 3-5 risk questions.
+            
+            Respond with JSON array:
+            [
+                {{
+                    "question": "What are the main financial risks in this contract?",
+                    "answer": "The contract exposes the company to payment default risk ($50K), liability risk (unlimited), and currency fluctuation risk.",
+                    "difficulty": "HARD",
+                    "risk_category": "financial",
+                    "severity": "HIGH",
+                    "mitigation": "Implement payment guarantees, limit liability clauses, and hedge currency exposure",
+                    "confidence": 0.9
+                }}
+            ]
+            """
+            
+            # Include risk assessment context
+            risk_context = ""
+            if risk_assessment:
+                risk_context = f"\n\nRISK ASSESSMENT:\n{json.dumps(risk_assessment, indent=2)}"
+            
+            user_prompt = f"Generate risk questions about this {doc_type} document:{risk_context}\n\n{content[:3000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            questions = json.loads(result_text)
+            
+            # Validate questions
+            valid_questions = []
+            for question in questions:
+                if self._validate_risk_question(question):
+                    valid_questions.append(question)
+            
+            return valid_questions
+            
+        except Exception as e:
+            return []
+    
+    def _validate_risk_question(self, question: Dict[str, Any]) -> bool:
+        """Validate risk question"""
+        required_fields = ["question", "answer", "difficulty", "risk_category", "severity", "mitigation", "confidence"]
+        
+        # Check required fields
+        for field in required_fields:
+            if field not in question:
+                return False
+        
+        # Validate difficulty
+        difficulty = question.get("difficulty", "").upper()
+        if difficulty not in ["EASY", "MEDIUM", "HARD"]:
+            return False
+        
+        # Validate severity
+        severity = question.get("severity", "").upper()
+        if severity not in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]:
+            return False
+        
+        # Validate confidence
+        confidence = question.get("confidence", 0)
+        if not (0.0 <= confidence <= 1.0):
+            return False
+        
+        return True
+
+
+class ActionQuestionGeneratorTool(Tool):
+    """Tool for generating action-oriented questions"""
+    
+    def __init__(self):
+        super().__init__("generate_action", "Generate action-oriented questions")
+    
+    async def execute(self, content: str, doc_type: str, entities: List[Dict], risk_assessment: Dict, **kwargs) -> List[Dict[str, Any]]:
+        """Generate action questions"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.3)
+            
+            system_prompt = f"""You are an expert business analyst. Generate action-oriented questions about this {doc_type} document.
+            
+            Focus on:
+            - Required actions
+            - Deadlines and timelines
+            - Responsibilities and obligations
+            - Next steps
+            - Decision points
+            
+            For each question, provide:
+            - question: Action-focused question
+            - answer: Detailed action plan or response
+            - difficulty: EASY/MEDIUM/HARD
+            - action_type: Type of action required
+            - priority: HIGH/MEDIUM/LOW
+            - timeline: When action is needed
+            - responsible_party: Who should take action
+            - confidence: Confidence in assessment (0.0-1.0)
+            
+            Generate 3-5 action questions.
+            
+            Respond with JSON array:
+            [
+                {{
+                    "question": "What actions are required within 30 days of contract signing?",
+                    "answer": "1. Set up payment processing system, 2. Assign contract manager, 3. Schedule kickoff meeting, 4. Begin vendor onboarding process",
+                    "difficulty": "MEDIUM",
+                    "action_type": "implementation",
+                    "priority": "HIGH",
+                    "timeline": "30 days",
+                    "responsible_party": "Project Manager",
+                    "confidence": 0.9
+                }}
+            ]
+            """
+            
+            # Include context
+            context = ""
+            if entities:
+                context += f"\n\nKEY ENTITIES:\n{json.dumps(entities[:10], indent=2)}"
+            if risk_assessment:
+                context += f"\n\nRISK ASSESSMENT:\n{json.dumps(risk_assessment, indent=2)}"
+            
+            user_prompt = f"Generate action questions about this {doc_type} document:{context}\n\n{content[:3000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            questions = json.loads(result_text)
+            
+            # Validate questions
+            valid_questions = []
+            for question in questions:
+                if self._validate_action_question(question):
+                    valid_questions.append(question)
+            
+            return valid_questions
+            
+        except Exception as e:
+            return []
+    
+    def _validate_action_question(self, question: Dict[str, Any]) -> bool:
+        """Validate action question"""
+        required_fields = ["question", "answer", "difficulty", "action_type", "priority", "timeline", "responsible_party", "confidence"]
+        
+        # Check required fields
+        for field in required_fields:
+            if field not in question:
+                return False
+        
+        # Validate difficulty
+        difficulty = question.get("difficulty", "").upper()
+        if difficulty not in ["EASY", "MEDIUM", "HARD"]:
+            return False
+        
+        # Validate priority
+        priority = question.get("priority", "").upper()
+        if priority not in ["HIGH", "MEDIUM", "LOW"]:
+            return False
+        
+        # Validate confidence
+        confidence = question.get("confidence", 0)
+        if not (0.0 <= confidence <= 1.0):
+            return False
+        
+        return True
+
+
+class QASummaryGeneratorTool(Tool):
+    """Tool for generating QA summary and insights"""
+    
+    def __init__(self):
+        super().__init__("generate_summary", "Generate QA summary and insights")
+    
+    async def execute(self, all_questions: List[Dict], doc_type: str, **kwargs) -> Dict[str, Any]:
+        """Generate QA summary"""
+        try:
+            # Categorize questions
+            factual_questions = [q for q in all_questions if "category" in q]
+            compliance_questions = [q for q in all_questions if "compliance_area" in q]
+            risk_questions = [q for q in all_questions if "risk_category" in q]
+            action_questions = [q for q in all_questions if "action_type" in q]
+            
+            # Calculate statistics
+            total_questions = len(all_questions)
+            avg_confidence = sum(q.get("confidence", 0) for q in all_questions) / total_questions if total_questions > 0 else 0
+            
+            # Difficulty distribution
+            difficulty_dist = {"EASY": 0, "MEDIUM": 0, "HARD": 0}
+            for q in all_questions:
+                difficulty = q.get("difficulty", "MEDIUM").upper()
+                difficulty_dist[difficulty] += 1
+            
+            # Priority distribution (for action questions)
+            priority_dist = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+            for q in action_questions:
+                priority = q.get("priority", "MEDIUM").upper()
+                priority_dist[priority] += 1
+            
+            # Risk level distribution (for risk questions)
+            risk_dist = {"LOW": 0, "MEDIUM": 0, "HIGH": 0, "CRITICAL": 0}
+            for q in risk_questions:
+                risk_level = q.get("severity", "MEDIUM").upper()
+                risk_dist[risk_level] += 1
+            
+            # Generate insights
+            insights = []
+            
+            if factual_questions:
+                insights.append(f"Generated {len(factual_questions)} factual questions covering key document information")
+            
+            if compliance_questions:
+                high_risk_compliance = [q for q in compliance_questions if q.get("risk_level") in ["HIGH", "CRITICAL"]]
+                insights.append(f"Identified {len(high_risk_compliance)} high/critical compliance concerns")
+            
+            if risk_questions:
+                high_risk = [q for q in risk_questions if q.get("severity") in ["HIGH", "CRITICAL"]]
+                insights.append(f"Found {len(high_risk)} high/critical risk areas requiring attention")
+            
+            if action_questions:
+                high_priority_actions = [q for q in action_questions if q.get("priority") == "HIGH"]
+                insights.append(f"Identified {len(high_priority_actions)} high-priority actions")
+            
+            return {
+                "summary": {
+                    "total_questions": total_questions,
+                    "question_types": {
+                        "factual": len(factual_questions),
+                        "compliance": len(compliance_questions),
+                        "risk": len(risk_questions),
+                        "action": len(action_questions)
+                    },
+                    "average_confidence": avg_confidence,
+                    "difficulty_distribution": difficulty_dist,
+                    "priority_distribution": priority_dist,
+                    "risk_distribution": risk_dist
+                },
+                "insights": insights,
+                "recommendations": self._generate_recommendations(all_questions)
+            }
+            
+        except Exception as e:
+            return {
+                "summary": {},
+                "insights": [f"Summary generation failed: {str(e)}"],
+                "recommendations": ["Manual review required"]
+            }
+    
+    def _generate_recommendations(self, questions: List[Dict]) -> List[str]:
+        """Generate recommendations based on questions"""
+        recommendations = []
+        
+        # Check for high-risk items
+        high_risk_compliance = [q for q in questions if q.get("risk_level") in ["HIGH", "CRITICAL"]]
+        if high_risk_compliance:
+            recommendations.append("Immediate attention required for high-risk compliance issues")
+        
+        high_risk = [q for q in questions if q.get("severity") in ["HIGH", "CRITICAL"]]
+        if high_risk:
+            recommendations.append("Urgent action needed for high/critical risk areas")
+        
+        # Check for high-priority actions
+        high_priority = [q for q in questions if q.get("priority") == "HIGH"]
+        if high_priority:
+            recommendations.append("Prioritize high-priority action items")
+        
+        # Check confidence levels
+        low_confidence = [q for q in questions if q.get("confidence", 1) < 0.7]
+        if low_confidence:
+            recommendations.append("Review low-confidence assessments for accuracy")
+        
+        if not recommendations:
+            recommendations.append("Document appears well-structured with manageable risks")
+        
+        return recommendations
 
 
 class QAAgent(BaseAgent):
-    """Agent responsible for question answering with citations"""
+    """Agent responsible for generating questions and answers"""
     
     def __init__(self, llm_model: str = "gpt-4"):
         super().__init__("QAAgent", AgentType.QA)
-        self.llm = ChatOpenAI(model=llm_model, temperature=0.1)
+        self.llm = ChatOpenAI(model=llm_model, temperature=0.3)
         
         # Add tools
-        self.add_tool(VectorSearchTool())
-        self.add_tool(AnswerGenerationTool())
-        self.add_tool(KnowledgeBaseSearchTool())
+        self.add_tool(FactualQuestionGeneratorTool())
+        self.add_tool(ComplianceQuestionGeneratorTool())
+        self.add_tool(RiskQuestionGeneratorTool())
+        self.add_tool(ActionQuestionGeneratorTool())
+        self.add_tool(QASummaryGeneratorTool())
     
     async def run(self, goal: str, context: Dict[str, Any]) -> AgentResult:
-        """Main Q&A process"""
-        question = context.get("question")
-        if not question:
+        """Main QA generation process"""
+        document = context.get("document")
+        if not document:
             return AgentResult(
                 output=None,
-                rationale="No question provided in context",
+                rationale="No document provided in context",
                 confidence=0.0,
-                next_suggested_action="Provide question in context"
+                next_suggested_action="Provide document in context"
             )
         
         try:
-            # Get document content
-            document = context.get("document")
-            documents = []
-            if document and hasattr(document, 'content'):
-                documents.append(document.content)
+            doc_type = document.doc_type.value if document.doc_type else "unknown"
+            entities = document.metadata.get("entities", [])
+            risk_assessment = document.metadata.get("risk_assessment", {})
             
-            # Search for relevant chunks
-            search_tool = self.get_tool("vector_search")
-            context_chunks = await search_tool.execute(
-                query=question,
-                documents=documents
+            # Generate factual questions
+            factual_tool = self.get_tool("generate_factual")
+            factual_questions = await factual_tool.execute(
+                content=document.content,
+                doc_type=doc_type,
+                entities=entities
             )
             
-            # Search knowledge base for additional context
-            kb_tool = self.get_tool("kb_search")
-            kb_results = await kb_tool.execute(query=question)
-            
-            # Combine context
-            all_context = context_chunks + kb_results
-            
-            # Generate answer
-            answer_tool = self.get_tool("generate_answer")
-            answer_result = await answer_tool.execute(
-                question=question,
-                context_chunks=all_context
+            # Generate compliance questions
+            compliance_tool = self.get_tool("generate_compliance")
+            compliance_questions = await compliance_tool.execute(
+                content=document.content,
+                doc_type=doc_type,
+                risk_assessment=risk_assessment
             )
             
-            # Create QAResponse object
-            qa_response = QAResponse(
-                answer=answer_result.get("answer", "No answer generated"),
-                citations=answer_result.get("citations", []),
-                confidence=answer_result.get("confidence", 0.0),
-                sources=answer_result.get("sources", [])
+            # Generate risk questions
+            risk_tool = self.get_tool("generate_risk")
+            risk_questions = await risk_tool.execute(
+                content=document.content,
+                doc_type=doc_type,
+                risk_assessment=risk_assessment
             )
             
-            # Calculate overall confidence
-            overall_confidence = answer_result.get("confidence", 0.0)
+            # Generate action questions
+            action_tool = self.get_tool("generate_action")
+            action_questions = await action_tool.execute(
+                content=document.content,
+                doc_type=doc_type,
+                entities=entities,
+                risk_assessment=risk_assessment
+            )
             
-            # Adjust confidence based on context quality
-            if context_chunks:
-                avg_similarity = sum(chunk.get("similarity_score", 0) for chunk in context_chunks) / len(context_chunks)
-                overall_confidence = (overall_confidence + avg_similarity) / 2
+            # Combine all questions
+            all_questions = factual_questions + compliance_questions + risk_questions + action_questions
+            
+            # Generate summary
+            summary_tool = self.get_tool("generate_summary")
+            qa_summary = await summary_tool.execute(
+                all_questions=all_questions,
+                doc_type=doc_type
+            )
+            
+            # Update document metadata
+            document.metadata.update({
+                "qa_generation": {
+                    "questions": all_questions,
+                    "summary": qa_summary,
+                    "generated_at": datetime.utcnow().isoformat()
+                }
+            })
+            
+            # Calculate confidence
+            confidence = self._calculate_confidence(all_questions, qa_summary)
             
             # Generate rationale
-            rationale = f"Generated answer with {len(answer_result.get('citations', []))} citations. Context chunks: {len(context_chunks)}, KB results: {len(kb_results)}"
+            total_questions = len(all_questions)
+            question_types = qa_summary.get("summary", {}).get("question_types", {})
+            
+            rationale = f"Generated {total_questions} questions: {question_types.get('factual', 0)} factual, {question_types.get('compliance', 0)} compliance, {question_types.get('risk', 0)} risk, {question_types.get('action', 0)} action questions"
             
             return AgentResult(
-                output=qa_response,
+                output=document,
                 rationale=rationale,
-                confidence=overall_confidence,
-                next_suggested_action="Ask follow-up question" if overall_confidence > 0.7 else "Refine question for better results"
+                confidence=confidence,
+                next_suggested_action="Proceed to document comparison",
+                metadata={
+                    "questions": all_questions,
+                    "summary": qa_summary
+                }
             )
             
         except Exception as e:
             return AgentResult(
-                output=QAResponse(
-                    answer=f"Error generating answer: {str(e)}",
-                    citations=[],
-                    confidence=0.0,
-                    sources=[]
-                ),
-                rationale=f"Q&A failed: {str(e)}",
+                output=None,
+                rationale=f"QA generation failed: {str(e)}",
                 confidence=0.0,
-                next_suggested_action="Try rephrasing the question"
+                next_suggested_action="Manual QA generation required"
             )
     
-    async def answer_question(self, question: str, document_content: str) -> QAResponse:
-        """Convenience method for answering questions"""
-        context = {
-            "question": question,
-            "document": type('Document', (), {'content': document_content})()
-        }
+    def _calculate_confidence(self, questions: List[Dict], summary: Dict) -> float:
+        """Calculate confidence based on QA generation results"""
+        confidence = 0.5  # Base confidence
         
-        result = await self.run("Answer question", context)
-        return result.output if result.output else QAResponse(
-            answer="Unable to generate answer",
-            citations=[],
-            confidence=0.0,
-            sources=[]
-        )
-    
-    def get_answer_quality_metrics(self, response: QAResponse) -> Dict[str, Any]:
-        """Get quality metrics for an answer"""
-        return {
-            "confidence": response.confidence,
-            "citation_count": len(response.citations),
-            "source_count": len(response.sources),
-            "answer_length": len(response.answer),
-            "has_citations": len(response.citations) > 0,
-            "quality_score": min(1.0, response.confidence * (1 + len(response.citations) * 0.1))
-        }
+        # Question quantity and quality
+        if len(questions) >= 10:
+            confidence += 0.2
+        elif len(questions) >= 5:
+            confidence += 0.1
+        
+        # Average confidence of questions
+        if questions:
+            avg_question_confidence = sum(q.get("confidence", 0) for q in questions) / len(questions)
+            confidence += avg_question_confidence * 0.2
+        
+        # Summary completeness
+        summary_data = summary.get("summary", {})
+        if summary_data.get("total_questions", 0) > 0:
+            confidence += 0.1
+        
+        # Insights quality
+        insights = summary.get("insights", [])
+        if len(insights) >= 3:
+            confidence += 0.1
+        
+        return min(1.0, max(0.0, confidence))
