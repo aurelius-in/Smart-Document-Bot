@@ -1,3 +1,4 @@
+import uuid
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -5,16 +6,15 @@ from pydantic import BaseModel
 
 from ...core.security import get_current_user, require_permissions
 from ...services.agent_service import AgentService
+from ...models.base import Document, DocumentType
 
 router = APIRouter()
-
 
 class ComparisonRequest(BaseModel):
     """Document comparison request model"""
     documentAId: str
     documentBId: str
-    comparisonType: str = "semantic"  # semantic, structural, compliance, risk
-
+    comparisonType: str = "semantic"
 
 class ComparisonResult(BaseModel):
     """Document comparison result model"""
@@ -30,16 +30,13 @@ class ComparisonResult(BaseModel):
     duration: int
     createdAt: str
 
-
 class PaginatedResponse(BaseModel):
     """Paginated response model"""
     data: List[ComparisonResult]
     pagination: dict
 
-
-# Mock comparison storage - in production, this would be a database
+# Mock comparison storage
 COMPARISON_STORE = {}
-
 
 @router.post("/documents", response_model=ComparisonResult)
 async def compare_documents(
@@ -49,71 +46,128 @@ async def compare_documents(
 ):
     """Compare two documents"""
     try:
+        # Import document store from documents endpoint
+        from .documents import DOCUMENT_STORE
+        
+        # Validate documents exist
+        if request.documentAId not in DOCUMENT_STORE:
+            raise HTTPException(status_code=404, detail=f"Document A with ID {request.documentAId} not found")
+        
+        if request.documentBId not in DOCUMENT_STORE:
+            raise HTTPException(status_code=404, detail=f"Document B with ID {request.documentBId} not found")
+        
+        # Get documents
+        doc_a_data = DOCUMENT_STORE[request.documentAId]
+        doc_b_data = DOCUMENT_STORE[request.documentBId]
+        
+        document_a = doc_a_data["document"]
+        document_b = doc_b_data["document"]
+        
+        # Ensure documents have content
+        if not document_a.content:
+            raise HTTPException(status_code=400, detail="Document A has no content. Please process it first.")
+        
+        if not document_b.content:
+            raise HTTPException(status_code=400, detail="Document B has no content. Please process it first.")
+        
         # Generate comparison ID
-        comparison_id = f"comp_{request.documentAId}_{request.documentBId}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        comparison_id = str(uuid.uuid4())
+        start_time = datetime.utcnow()
         
         # Create initial comparison record
-        comparison_result = {
+        comparison_record = {
             "id": comparison_id,
             "documentAId": request.documentAId,
             "documentBId": request.documentBId,
             "comparisonType": request.comparisonType,
             "status": "processing",
-            "semanticDiffs": [],
-            "riskDelta": {},
-            "complianceImpact": {},
-            "confidence": 0.0,
-            "duration": 0,
-            "createdAt": datetime.utcnow().isoformat()
+            "createdAt": start_time.isoformat(),
+            "createdBy": current_user["email"]
         }
         
-        # Store comparison record
-        COMPARISON_STORE[comparison_id] = comparison_result
+        COMPARISON_STORE[comparison_id] = comparison_record
         
-        # In a real implementation, this would fetch documents from database
-        # For demo purposes, we'll use sample content
-        doc_a_content = f"Sample content for document {request.documentAId}"
-        doc_b_content = f"Sample content for document {request.documentBId}"
+        # Execute comparison using agent service
+        comparison_result = await agent_service.compare_documents(
+            document_a=document_a,
+            document_b=document_b,
+            goal=f"Compare documents for {request.comparisonType} differences and risk changes"
+        )
         
-        # Create temporary documents for comparison
-        import tempfile
-        import os
+        # Calculate duration
+        end_time = datetime.utcnow()
+        duration = int((end_time - start_time).total_seconds() * 1000)
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f_a:
-            f_a.write(doc_a_content)
-            doc_a_path = f_a.name
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f_b:
-            f_b.write(doc_b_content)
-            doc_b_path = f_b.name
-        
-        try:
-            # Compare documents
-            result = await agent_service.compare_documents(doc_a_path, doc_b_path)
+        # Update comparison record
+        if comparison_result["status"] == "completed":
+            result_data = comparison_result["result"]
             
-            # Update comparison result
-            comparison_result.update({
+            # Extract comparison details
+            semantic_diffs = []
+            risk_delta = {}
+            compliance_impact = {}
+            
+            if result_data and "comparison_results" in result_data:
+                results = result_data["comparison_results"]
+                
+                # Extract semantic differences
+                if "semantic" in results:
+                    semantic_result = results["semantic"]
+                    semantic_diffs = semantic_result.get("semantic_differences", [])
+                
+                # Extract risk delta
+                if "compliance" in results:
+                    compliance_result = results["compliance"]
+                    risk_delta = {
+                        "risk_delta": compliance_result.get("risk_delta", "No risk change detected"),
+                        "compliance_impact": compliance_result.get("compliance_impact", "No compliance impact detected")
+                    }
+                
+                # Extract compliance impact
+                if "summary" in results:
+                    summary = results["summary"]
+                    compliance_impact = {
+                        "overall_similarity": summary.get("overall_similarity", 0.0),
+                        "total_differences": summary.get("total_differences", 0),
+                        "insights": summary.get("insights", []),
+                        "recommendations": summary.get("recommendations", [])
+                    }
+            
+            comparison_record.update({
                 "status": "completed",
-                "semanticDiffs": result.get("result", {}).get("semantic_diffs", []),
-                "riskDelta": result.get("result", {}).get("risk_delta", {}),
-                "complianceImpact": result.get("result", {}).get("compliance_impact", {}),
-                "confidence": result.get("confidence", 0.0),
-                "duration": result.get("duration_ms", 0)
+                "semanticDiffs": semantic_diffs,
+                "riskDelta": risk_delta,
+                "complianceImpact": compliance_impact,
+                "confidence": comparison_result.get("confidence", 0.0),
+                "duration": duration,
+                "result": comparison_result["result"]
             })
-            
-            return ComparisonResult(**comparison_result)
-            
-        finally:
-            # Clean up temporary files
-            os.unlink(doc_a_path)
-            os.unlink(doc_b_path)
+        else:
+            comparison_record.update({
+                "status": "failed",
+                "error": comparison_result.get("error", "Comparison failed"),
+                "confidence": 0.0,
+                "duration": duration
+            })
         
+        return ComparisonResult(
+            id=comparison_id,
+            documentAId=request.documentAId,
+            documentBId=request.documentBId,
+            comparisonType=request.comparisonType,
+            status=comparison_record["status"],
+            semanticDiffs=comparison_record.get("semanticDiffs", []),
+            riskDelta=comparison_record.get("riskDelta", {}),
+            complianceImpact=comparison_record.get("complianceImpact", {}),
+            confidence=comparison_record.get("confidence", 0.0),
+            duration=comparison_record.get("duration", 0),
+            createdAt=comparison_record["createdAt"]
+        )
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        # Update status to error
-        if comparison_id in COMPARISON_STORE:
-            COMPARISON_STORE[comparison_id]["status"] = "error"
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.get("/documents/{comparison_id}", response_model=ComparisonResult)
 async def get_comparison_result(
@@ -126,11 +180,25 @@ async def get_comparison_result(
             raise HTTPException(status_code=404, detail="Comparison not found")
         
         comparison = COMPARISON_STORE[comparison_id]
-        return ComparisonResult(**comparison)
         
+        return ComparisonResult(
+            id=comparison["id"],
+            documentAId=comparison["documentAId"],
+            documentBId=comparison["documentBId"],
+            comparisonType=comparison["comparisonType"],
+            status=comparison["status"],
+            semanticDiffs=comparison.get("semanticDiffs", []),
+            riskDelta=comparison.get("riskDelta", {}),
+            complianceImpact=comparison.get("complianceImpact", {}),
+            confidence=comparison.get("confidence", 0.0),
+            duration=comparison.get("duration", 0),
+            createdAt=comparison["createdAt"]
+        )
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve comparison: {str(e)}")
 
 @router.get("/history", response_model=PaginatedResponse)
 async def get_comparison_history(
@@ -140,19 +208,37 @@ async def get_comparison_history(
 ):
     """Get comparison history for the user"""
     try:
-        # Get all comparisons
-        comparisons = list(COMPARISON_STORE.values())
+        # Filter comparisons by user
+        user_comparisons = [
+            comp for comp in COMPARISON_STORE.values()
+            if comp.get("createdBy") == current_user["email"]
+        ]
         
         # Calculate pagination
-        total = len(comparisons)
+        total = len(user_comparisons)
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
-        paginated_comparisons = comparisons[start_idx:end_idx]
         
-        # Convert to ComparisonResult models
-        comparison_results = [
-            ComparisonResult(**comp) for comp in paginated_comparisons
-        ]
+        # Get page of comparisons
+        page_comparisons = user_comparisons[start_idx:end_idx]
+        
+        # Convert to ComparisonResult
+        comparison_results = []
+        for comparison in page_comparisons:
+            comparison_result = ComparisonResult(
+                id=comparison["id"],
+                documentAId=comparison["documentAId"],
+                documentBId=comparison["documentBId"],
+                comparisonType=comparison["comparisonType"],
+                status=comparison["status"],
+                semanticDiffs=comparison.get("semanticDiffs", []),
+                riskDelta=comparison.get("riskDelta", {}),
+                complianceImpact=comparison.get("complianceImpact", {}),
+                confidence=comparison.get("confidence", 0.0),
+                duration=comparison.get("duration", 0),
+                createdAt=comparison["createdAt"]
+            )
+            comparison_results.append(comparison_result)
         
         return PaginatedResponse(
             data=comparison_results,
@@ -160,13 +246,12 @@ async def get_comparison_history(
                 "page": page,
                 "limit": limit,
                 "total": total,
-                "totalPages": (total + limit - 1) // limit
+                "pages": (total + limit - 1) // limit
             }
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve comparison history: {str(e)}")
 
 @router.post("/content")
 async def compare_content(
@@ -176,68 +261,72 @@ async def compare_content(
     current_user: dict = Depends(require_permissions(["analyze"])),
     agent_service: AgentService = Depends()
 ):
-    """Compare document content directly"""
+    """Compare raw content strings"""
     try:
-        # Create temporary files for comparison
-        import tempfile
-        import os
+        # Create temporary document objects
+        document_a = Document(
+            id="temp_a",
+            filename="content_a.txt",
+            content=content_a,
+            doc_type=DocumentType.UNKNOWN,
+            metadata={"source": "direct_content"}
+        )
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f_a:
-            f_a.write(content_a)
-            doc_a_path = f_a.name
+        document_b = Document(
+            id="temp_b",
+            filename="content_b.txt",
+            content=content_b,
+            doc_type=DocumentType.UNKNOWN,
+            metadata={"source": "direct_content"}
+        )
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f_b:
-            f_b.write(content_b)
-            doc_b_path = f_b.name
+        # Execute comparison
+        comparison_result = await agent_service.compare_documents(
+            document_a=document_a,
+            document_b=document_b,
+            goal=f"Compare content for {comparison_type} differences"
+        )
         
-        try:
-            # Compare documents
-            result = await agent_service.compare_documents(doc_a_path, doc_b_path)
-            
-            return {
-                "comparison_type": comparison_type,
-                "semantic_diffs": result.get("result", {}).get("semantic_diffs", []),
-                "risk_delta": result.get("result", {}).get("risk_delta", {}),
-                "compliance_impact": result.get("result", {}).get("compliance_impact", {}),
-                "confidence": result.get("confidence", 0.0),
-                "duration_ms": result.get("duration_ms", 0)
-            }
-            
-        finally:
-            # Clean up temporary files
-            os.unlink(doc_a_path)
-            os.unlink(doc_b_path)
+        return {
+            "status": comparison_result["status"],
+            "result": comparison_result["result"],
+            "confidence": comparison_result.get("confidence", 0.0),
+            "rationale": comparison_result.get("rationale", "")
+        }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Content comparison failed: {str(e)}")
 
 @router.get("/stats/summary")
 async def get_comparison_stats(current_user: dict = Depends(get_current_user)):
     """Get comparison statistics"""
     try:
-        comparisons = list(COMPARISON_STORE.values())
+        # Filter comparisons by user
+        user_comparisons = [
+            comp for comp in COMPARISON_STORE.values()
+            if comp.get("createdBy") == current_user["email"]
+        ]
         
-        total_comparisons = len(comparisons)
-        completed_comparisons = len([c for c in comparisons if c["status"] == "completed"])
-        error_comparisons = len([c for c in comparisons if c["status"] == "error"])
+        total_comparisons = len(user_comparisons)
+        completed_comparisons = len([c for c in user_comparisons if c["status"] == "completed"])
+        failed_comparisons = len([c for c in user_comparisons if c["status"] == "failed"])
         
-        avg_confidence = 0.0
-        if completed_comparisons > 0:
-            avg_confidence = sum(c.get("confidence", 0) for c in comparisons if c["status"] == "completed") / completed_comparisons
+        # Calculate average confidence
+        confidences = [c.get("confidence", 0.0) for c in user_comparisons if c.get("confidence")]
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
         
-        avg_duration = 0.0
-        if completed_comparisons > 0:
-            avg_duration = sum(c.get("duration", 0) for c in comparisons if c["status"] == "completed") / completed_comparisons
+        # Calculate average duration
+        durations = [c.get("duration", 0) for c in user_comparisons if c.get("duration")]
+        avg_duration = sum(durations) / len(durations) if durations else 0
         
         return {
             "total_comparisons": total_comparisons,
             "completed_comparisons": completed_comparisons,
-            "error_comparisons": error_comparisons,
+            "failed_comparisons": failed_comparisons,
             "average_confidence": avg_confidence,
             "average_duration_ms": avg_duration,
-            "success_rate": (completed_comparisons / total_comparisons * 100) if total_comparisons > 0 else 0
+            "success_rate": (completed_comparisons / total_comparisons * 100) if total_comparisons > 0 else 0.0
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get comparison statistics: {str(e)}")

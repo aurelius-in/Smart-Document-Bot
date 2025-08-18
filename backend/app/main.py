@@ -5,6 +5,7 @@ from typing import Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uvicorn
@@ -12,42 +13,44 @@ from sse_starlette.sse import EventSourceResponse
 
 from .core.config import settings
 from .core.security import get_current_user, create_access_token
-from .core.middleware import PIIRedactionMiddleware, AuditLogMiddleware
-from .api.v1.endpoints import agentic, documents, traces, qa, compare, audit, auth, settings, memory
+from .core.middleware import PIIRedactionMiddleware, AuditLogMiddleware, RequestLoggingMiddleware
+from .api.v1.endpoints import agentic, documents, traces, qa, compare, audit, settings, memory
 from .services.agent_service import AgentService
 from .services.memory_service import MemoryService
 from .core.monitoring import setup_monitoring, instrument_fastapi
 
+# Global agent service instance
+agent_service = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
-    # Startup
-    print("🚀 Starting REDLINE Regulatory Document Intelligence Platform...")
+    global agent_service
     
-    # Initialize services
-    app.state.agent_service = AgentService()
-    app.state.memory_service = MemoryService()
+    # Startup
+    print("🚀 Starting Smart Document Bot...")
+    
+    # Initialize agent service
+    agent_service = AgentService()
+    print("✅ Agent service initialized")
     
     # Setup monitoring
     setup_monitoring()
-    instrument_fastapi(app)
-    
-    print("✅ Services initialized successfully")
+    print("✅ Monitoring setup complete")
     
     yield
     
     # Shutdown
-    print("🛑 Shutting down REDLINE...")
-
+    print("🛑 Shutting down Smart Document Bot...")
+    if agent_service:
+        await agent_service.cleanup_old_processing_history()
+    print("✅ Cleanup complete")
 
 # Create FastAPI app
 app = FastAPI(
-    title="REDLINE - Regulatory Document Intelligence Platform",
-    description="Agentic system for regulatory document processing and compliance analysis",
+    title="Smart Document Bot API",
+    description="AI-powered document processing and analysis system",
     version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
     lifespan=lifespan
 )
 
@@ -63,52 +66,121 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=settings.ALLOWED_HOSTS
+)
+
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(PIIRedactionMiddleware)
 app.add_middleware(AuditLogMiddleware)
 
-# Dependency injection
+# Dependency to get agent service
 def get_agent_service() -> AgentService:
-    return app.state.agent_service
-
-def get_memory_service() -> MemoryService:
-    return app.state.memory_service
+    """Get the global agent service instance"""
+    if agent_service is None:
+        raise RuntimeError("Agent service not initialized")
+    return agent_service
 
 # Override dependency injection for endpoints
 app.dependency_overrides[AgentService] = get_agent_service
-app.dependency_overrides[MemoryService] = get_memory_service
 
 # Include routers
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
-app.include_router(agentic.router, prefix="/api/v1/agentic", tags=["Agentic Processing"])
-app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
-app.include_router(traces.router, prefix="/api/v1/traces", tags=["Agent Traces"])
-app.include_router(qa.router, prefix="/api/v1/qa", tags=["Q&A"])
-app.include_router(compare.router, prefix="/api/v1/compare", tags=["Document Comparison"])
-app.include_router(audit.router, prefix="/api/v1/audit", tags=["Audit"])
-app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"])
-app.include_router(memory.router, prefix="/api/v1/memory", tags=["Memory"])
+app.include_router(
+    auth.router,
+    prefix="/api/v1/auth",
+    tags=["Authentication"]
+)
 
+app.include_router(
+    agentic.router,
+    prefix="/api/v1/agentic",
+    tags=["Agentic Processing"]
+)
 
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "message": "REDLINE - Regulatory Document Intelligence Platform",
-        "version": "1.0.0",
-        "status": "operational",
-        "docs": "/api/docs"
-    }
+app.include_router(
+    documents.router,
+    prefix="/api/v1/documents",
+    tags=["Documents"],
+    dependencies=[Depends(get_agent_service)]
+)
 
+app.include_router(
+    traces.router,
+    prefix="/api/v1/traces",
+    tags=["Agent Traces"],
+    dependencies=[Depends(get_agent_service)]
+)
 
+app.include_router(
+    qa.router,
+    prefix="/api/v1/qa",
+    tags=["Question Answering"],
+    dependencies=[Depends(get_agent_service)]
+)
+
+app.include_router(
+    compare.router,
+    prefix="/api/v1/compare",
+    tags=["Document Comparison"],
+    dependencies=[Depends(get_agent_service)]
+)
+
+app.include_router(
+    audit.router,
+    prefix="/api/v1/audit",
+    tags=["Audit Trail"],
+    dependencies=[Depends(get_agent_service)]
+)
+
+app.include_router(
+    settings.router,
+    prefix="/api/v1/settings",
+    tags=["Settings"]
+)
+
+app.include_router(
+    memory.router,
+    prefix="/api/v1/memory",
+    tags=["Memory"]
+)
+
+# Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "services": {
-            "agent_service": "operational",
-            "memory_service": "operational"
-        }
+        "version": "1.0.0",
+        "timestamp": "2024-01-01T00:00:00Z"
+    }
+
+# Root endpoint
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "message": "Smart Document Bot API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
+    }
+
+# Agent capabilities endpoint
+@app.get("/api/v1/agents/capabilities")
+async def get_agent_capabilities(agent_service: AgentService = Depends(get_agent_service)):
+    """Get information about available agents and their capabilities"""
+    return agent_service.get_agent_capabilities()
+
+# System status endpoint
+@app.get("/api/v1/system/status")
+async def get_system_status(agent_service: AgentService = Depends(get_agent_service)):
+    """Get system status and health information"""
+    return {
+        "status": "operational",
+        "agents": agent_service.get_agent_capabilities(),
+        "workflow_status": agent_service.get_workflow_status(),
+        "processing_history": len(agent_service.get_all_processing_history())
     }
 
 
@@ -154,8 +226,8 @@ async def stream_agent_trace(
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG,
         log_level="info"
     )
