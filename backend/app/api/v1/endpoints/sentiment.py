@@ -1,360 +1,563 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
 import logging
 
 from ....services.agent_service import get_agent_service
-from ....models.base import Document
-from ....core.config import get_settings
+from ....core.monitoring import monitor
+from ....database.connection import get_db
+from ....database.models import Document, AgentTrace
 
-router = APIRouter()
-settings = get_settings()
 logger = logging.getLogger(__name__)
+router = APIRouter()
 
-@router.post("/analyze-sentiment")
+class SentimentAnalysisRequest(BaseModel):
+    text: str
+    analysis_depth: str = "comprehensive"  # basic, detailed, comprehensive
+
+class ToneAnalysisRequest(BaseModel):
+    text: str
+    tone_categories: Optional[List[str]] = None
+
+class EmotionDetectionRequest(BaseModel):
+    text: str
+    emotion_categories: Optional[List[str]] = None
+
+class SentimentTrackingRequest(BaseModel):
+    text: str
+    tracking_granularity: str = "paragraph"  # sentence, paragraph, section, overall
+
+class BiasDetectionRequest(BaseModel):
+    text: str
+    bias_types: Optional[List[str]] = None
+
+class ContextSentimentRequest(BaseModel):
+    text: str
+    context_type: str = "general"  # general, business, academic, legal, medical, customer_service, marketing
+
+class SentimentComparisonRequest(BaseModel):
+    text_a: str
+    text_b: str
+    comparison_criteria: Optional[List[str]] = None
+
+class SentimentValidationRequest(BaseModel):
+    text: str
+    sentiment_analysis: Dict[str, Any]
+
+@router.post("/analyze")
 async def analyze_sentiment(
-    analysis_depth: str = "comprehensive",
-    document: Document = Depends(),
-    agent_service = Depends(get_agent_service)
-) -> Dict[str, Any]:
-    """Analyze overall sentiment of the document"""
+    request: SentimentAnalysisRequest,
+    background_tasks: BackgroundTasks,
+    agent_service = Depends(get_agent_service),
+    db = Depends(get_db)
+):
+    """Analyze overall sentiment of the text"""
+    
     try:
-        agent_params = {
-            "analysis_depth": analysis_depth
-        }
+        with monitor.agent_execution("sentiment", "sentiment_analysis"):
+            result = await agent_service.execute_single_agent(
+                agent_type="sentiment",
+                document_content=request.text,
+                goal="Analyze sentiment",
+                analysis_depth=request.analysis_depth
+            )
         
-        result = await agent_service.execute_single_agent(
+        # Log the trace
+        background_tasks.add_task(
+            agent_service.log_agent_trace,
+            db=db,
             agent_type="sentiment",
-            document=document,
-            goal="Analyze sentiment"
+            execution_id=result.execution_id,
+            input_data=request.dict(),
+            output_data=result.output,
+            confidence=result.confidence,
+            status="completed"
         )
         
         return {
-            "status": "success",
-            "analysis_depth": analysis_depth,
-            "result": result.output,
+            "success": True,
+            "execution_id": result.execution_id,
+            "sentiment_analysis": result.output,
             "confidence": result.confidence,
             "rationale": result.rationale
         }
         
     except Exception as e:
-        logger.error(f"Error in sentiment analysis: {e}")
+        logger.error(f"Error in sentiment analysis: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Sentiment analysis failed: {str(e)}")
 
-@router.post("/analyze-tone")
+@router.post("/tone")
 async def analyze_tone(
-    tone_categories: Optional[List[str]] = None,
-    document: Document = Depends(),
-    agent_service = Depends(get_agent_service)
-) -> Dict[str, Any]:
-    """Analyze the tone and writing style of the document"""
+    request: ToneAnalysisRequest,
+    background_tasks: BackgroundTasks,
+    agent_service = Depends(get_agent_service),
+    db = Depends(get_db)
+):
+    """Analyze the tone and writing style of the text"""
+    
     try:
-        if not tone_categories:
-            tone_categories = ["formal", "informal", "professional", "casual", "authoritative", "friendly", "neutral"]
+        with monitor.agent_execution("sentiment", "tone_analysis"):
+            result = await agent_service.execute_single_agent(
+                agent_type="sentiment",
+                document_content=request.text,
+                goal="Analyze tone",
+                tone_categories=request.tone_categories
+            )
         
-        agent_params = {
-            "tone_categories": tone_categories
-        }
-        
-        result = await agent_service.execute_single_agent(
+        # Log the trace
+        background_tasks.add_task(
+            agent_service.log_agent_trace,
+            db=db,
             agent_type="sentiment",
-            document=document,
-            goal="Analyze tone"
+            execution_id=result.execution_id,
+            input_data=request.dict(),
+            output_data=result.output,
+            confidence=result.confidence,
+            status="completed"
         )
         
         return {
-            "status": "success",
-            "tone_categories": tone_categories,
-            "result": result.output,
+            "success": True,
+            "execution_id": result.execution_id,
+            "tone_analysis": result.output,
             "confidence": result.confidence,
             "rationale": result.rationale
         }
         
     except Exception as e:
-        logger.error(f"Error in tone analysis: {e}")
+        logger.error(f"Error in tone analysis: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Tone analysis failed: {str(e)}")
 
-@router.post("/detect-emotions")
+@router.post("/emotions")
 async def detect_emotions(
-    emotion_categories: Optional[List[str]] = None,
-    document: Document = Depends(),
-    agent_service = Depends(get_agent_service)
-) -> Dict[str, Any]:
-    """Detect specific emotions expressed in the document"""
+    request: EmotionDetectionRequest,
+    background_tasks: BackgroundTasks,
+    agent_service = Depends(get_agent_service),
+    db = Depends(get_db)
+):
+    """Detect specific emotions expressed in the text"""
+    
     try:
-        if not emotion_categories:
-            emotion_categories = ["joy", "sadness", "anger", "fear", "surprise", "disgust", "trust", "anticipation"]
+        with monitor.agent_execution("sentiment", "emotion_detection"):
+            result = await agent_service.execute_single_agent(
+                agent_type="sentiment",
+                document_content=request.text,
+                goal="Detect emotions",
+                emotion_categories=request.emotion_categories
+            )
         
-        agent_params = {
-            "emotion_categories": emotion_categories
-        }
-        
-        result = await agent_service.execute_single_agent(
+        # Log the trace
+        background_tasks.add_task(
+            agent_service.log_agent_trace,
+            db=db,
             agent_type="sentiment",
-            document=document,
-            goal="Detect emotions"
+            execution_id=result.execution_id,
+            input_data=request.dict(),
+            output_data=result.output,
+            confidence=result.confidence,
+            status="completed"
         )
         
         return {
-            "status": "success",
-            "emotion_categories": emotion_categories,
-            "result": result.output,
+            "success": True,
+            "execution_id": result.execution_id,
+            "emotion_detection": result.output,
             "confidence": result.confidence,
             "rationale": result.rationale
         }
         
     except Exception as e:
-        logger.error(f"Error in emotion detection: {e}")
+        logger.error(f"Error in emotion detection: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Emotion detection failed: {str(e)}")
 
-@router.post("/track-sentiment")
+@router.post("/tracking")
 async def track_sentiment(
-    tracking_granularity: str = "paragraph",
-    document: Document = Depends(),
-    agent_service = Depends(get_agent_service)
-) -> Dict[str, Any]:
-    """Track sentiment changes throughout the document"""
+    request: SentimentTrackingRequest,
+    background_tasks: BackgroundTasks,
+    agent_service = Depends(get_agent_service),
+    db = Depends(get_db)
+):
+    """Track sentiment changes throughout the text"""
+    
     try:
-        agent_params = {
-            "tracking_granularity": tracking_granularity
-        }
+        with monitor.agent_execution("sentiment", "sentiment_tracking"):
+            result = await agent_service.execute_single_agent(
+                agent_type="sentiment",
+                document_content=request.text,
+                goal="Track sentiment",
+                tracking_granularity=request.tracking_granularity
+            )
         
-        result = await agent_service.execute_single_agent(
+        # Log the trace
+        background_tasks.add_task(
+            agent_service.log_agent_trace,
+            db=db,
             agent_type="sentiment",
-            document=document,
-            goal="Track sentiment changes"
+            execution_id=result.execution_id,
+            input_data=request.dict(),
+            output_data=result.output,
+            confidence=result.confidence,
+            status="completed"
         )
         
         return {
-            "status": "success",
-            "tracking_granularity": tracking_granularity,
-            "result": result.output,
+            "success": True,
+            "execution_id": result.execution_id,
+            "sentiment_tracking": result.output,
             "confidence": result.confidence,
             "rationale": result.rationale
         }
         
     except Exception as e:
-        logger.error(f"Error in sentiment tracking: {e}")
+        logger.error(f"Error in sentiment tracking: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Sentiment tracking failed: {str(e)}")
 
-@router.post("/detect-bias")
+@router.post("/bias")
 async def detect_bias(
-    bias_types: Optional[List[str]] = None,
-    document: Document = Depends(),
-    agent_service = Depends(get_agent_service)
-) -> Dict[str, Any]:
-    """Detect various types of bias in the document"""
+    request: BiasDetectionRequest,
+    background_tasks: BackgroundTasks,
+    agent_service = Depends(get_agent_service),
+    db = Depends(get_db)
+):
+    """Detect various types of bias in the text"""
+    
     try:
-        if not bias_types:
-            bias_types = ["cognitive", "confirmation", "anchoring", "availability", "gender", "racial", "political"]
+        with monitor.agent_execution("sentiment", "bias_detection"):
+            result = await agent_service.execute_single_agent(
+                agent_type="sentiment",
+                document_content=request.text,
+                goal="Detect bias",
+                bias_types=request.bias_types
+            )
         
-        agent_params = {
-            "bias_types": bias_types
-        }
-        
-        result = await agent_service.execute_single_agent(
+        # Log the trace
+        background_tasks.add_task(
+            agent_service.log_agent_trace,
+            db=db,
             agent_type="sentiment",
-            document=document,
-            goal="Detect bias"
+            execution_id=result.execution_id,
+            input_data=request.dict(),
+            output_data=result.output,
+            confidence=result.confidence,
+            status="completed"
         )
         
         return {
-            "status": "success",
-            "bias_types": bias_types,
-            "result": result.output,
+            "success": True,
+            "execution_id": result.execution_id,
+            "bias_detection": result.output,
             "confidence": result.confidence,
             "rationale": result.rationale
         }
         
     except Exception as e:
-        logger.error(f"Error in bias detection: {e}")
+        logger.error(f"Error in bias detection: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Bias detection failed: {str(e)}")
 
-@router.post("/context-sentiment")
+@router.post("/context")
 async def context_sentiment(
-    context_type: str = "general",
-    document: Document = Depends(),
-    agent_service = Depends(get_agent_service)
-) -> Dict[str, Any]:
+    request: ContextSentimentRequest,
+    background_tasks: BackgroundTasks,
+    agent_service = Depends(get_agent_service),
+    db = Depends(get_db)
+):
     """Analyze sentiment in specific contexts"""
+    
     try:
-        agent_params = {
-            "context_type": context_type
-        }
+        with monitor.agent_execution("sentiment", "context_sentiment"):
+            result = await agent_service.execute_single_agent(
+                agent_type="sentiment",
+                document_content=request.text,
+                goal="Context sentiment analysis",
+                context_type=request.context_type
+            )
         
-        result = await agent_service.execute_single_agent(
+        # Log the trace
+        background_tasks.add_task(
+            agent_service.log_agent_trace,
+            db=db,
             agent_type="sentiment",
-            document=document,
-            goal=f"Analyze sentiment in {context_type} context"
+            execution_id=result.execution_id,
+            input_data=request.dict(),
+            output_data=result.output,
+            confidence=result.confidence,
+            status="completed"
         )
         
         return {
-            "status": "success",
-            "context_type": context_type,
-            "result": result.output,
+            "success": True,
+            "execution_id": result.execution_id,
+            "context_sentiment": result.output,
             "confidence": result.confidence,
             "rationale": result.rationale
         }
         
     except Exception as e:
-        logger.error(f"Error in context sentiment analysis: {e}")
+        logger.error(f"Error in context sentiment analysis: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Context sentiment analysis failed: {str(e)}")
 
-@router.post("/compare-sentiment")
+@router.post("/compare")
 async def compare_sentiment(
-    text_a: str,
-    text_b: str,
-    comparison_criteria: Optional[List[str]] = None,
-    agent_service = Depends(get_agent_service)
-) -> Dict[str, Any]:
+    request: SentimentComparisonRequest,
+    background_tasks: BackgroundTasks,
+    agent_service = Depends(get_agent_service),
+    db = Depends(get_db)
+):
     """Compare sentiment between two texts"""
+    
     try:
-        if not comparison_criteria:
-            comparison_criteria = ["overall_sentiment", "sentiment_intensity", "tone", "emotions"]
+        with monitor.agent_execution("sentiment", "sentiment_comparison"):
+            result = await agent_service.execute_single_agent(
+                agent_type="sentiment",
+                document_content=f"Text A: {request.text_a}\n\nText B: {request.text_b}",
+                goal="Compare sentiment",
+                comparison_criteria=request.comparison_criteria
+            )
         
-        # Create a mock document with the comparison data
-        comparison_doc = Document(
-            id=0,
-            filename="sentiment_comparison",
-            content=f"Text A: {text_a}\n\nText B: {text_b}",
-            file_path="",
-            file_size=0,
-            content_type="text/plain"
-        )
-        
-        agent_params = {
-            "comparison_criteria": comparison_criteria
-        }
-        
-        result = await agent_service.execute_single_agent(
+        # Log the trace
+        background_tasks.add_task(
+            agent_service.log_agent_trace,
+            db=db,
             agent_type="sentiment",
-            document=comparison_doc,
-            goal="Compare sentiment"
+            execution_id=result.execution_id,
+            input_data=request.dict(),
+            output_data=result.output,
+            confidence=result.confidence,
+            status="completed"
         )
         
         return {
-            "status": "success",
-            "comparison_criteria": comparison_criteria,
-            "result": result.output,
+            "success": True,
+            "execution_id": result.execution_id,
+            "sentiment_comparison": result.output,
             "confidence": result.confidence,
             "rationale": result.rationale
         }
         
     except Exception as e:
-        logger.error(f"Error in sentiment comparison: {e}")
+        logger.error(f"Error in sentiment comparison: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Sentiment comparison failed: {str(e)}")
 
-@router.post("/validate-sentiment")
+@router.post("/validate")
 async def validate_sentiment(
-    text: str,
-    sentiment_analysis: Dict[str, Any],
-    agent_service = Depends(get_agent_service)
-) -> Dict[str, Any]:
+    request: SentimentValidationRequest,
+    background_tasks: BackgroundTasks,
+    agent_service = Depends(get_agent_service),
+    db = Depends(get_db)
+):
     """Validate sentiment analysis results"""
+    
     try:
-        # Create a mock document with the validation data
-        validation_doc = Document(
-            id=0,
-            filename="sentiment_validation",
-            content=f"Text: {text}\n\nAnalysis: {str(sentiment_analysis)}",
-            file_path="",
-            file_size=0,
-            content_type="text/plain"
-        )
+        with monitor.agent_execution("sentiment", "sentiment_validation"):
+            result = await agent_service.execute_single_agent(
+                agent_type="sentiment",
+                document_content=request.text,
+                goal="Validate sentiment analysis",
+                sentiment_analysis=request.sentiment_analysis
+            )
         
-        result = await agent_service.execute_single_agent(
+        # Log the trace
+        background_tasks.add_task(
+            agent_service.log_agent_trace,
+            db=db,
             agent_type="sentiment",
-            document=validation_doc,
-            goal="Validate sentiment analysis"
+            execution_id=result.execution_id,
+            input_data=request.dict(),
+            output_data=result.output,
+            confidence=result.confidence,
+            status="completed"
         )
         
         return {
-            "status": "success",
-            "result": result.output,
+            "success": True,
+            "execution_id": result.execution_id,
+            "validation": result.output,
             "confidence": result.confidence,
             "rationale": result.rationale
         }
         
     except Exception as e:
-        logger.error(f"Error in sentiment validation: {e}")
+        logger.error(f"Error in sentiment validation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Sentiment validation failed: {str(e)}")
 
-@router.get("/capabilities")
-async def get_sentiment_capabilities() -> Dict[str, Any]:
-    """Get available sentiment analysis capabilities"""
+@router.get("/analysis-depths")
+async def get_analysis_depths():
+    """Get available analysis depth levels"""
+    
+    analysis_depths = {
+        "basic": {
+            "description": "Simple positive/negative/neutral classification",
+            "features": ["Basic sentiment polarity", "Quick analysis", "Low computational cost"]
+        },
+        "detailed": {
+            "description": "Includes intensity and confidence scores",
+            "features": ["Sentiment intensity", "Confidence scoring", "Detailed breakdown"]
+        },
+        "comprehensive": {
+            "description": "Includes context, nuances, and detailed breakdown",
+            "features": ["Contextual analysis", "Nuance detection", "Mixed sentiment analysis", "Key indicators"]
+        }
+    }
+    
     return {
-        "analysis_depths": [
-            "basic",
-            "detailed",
-            "comprehensive"
-        ],
-        "tone_categories": [
-            "formal",
-            "informal",
-            "professional",
-            "casual",
-            "authoritative",
-            "friendly",
-            "neutral",
-            "emotional",
-            "objective",
-            "subjective",
-            "confident",
-            "uncertain",
-            "respectful",
-            "condescending"
-        ],
-        "emotion_categories": [
-            "joy",
-            "sadness",
-            "anger",
-            "fear",
-            "surprise",
-            "disgust",
-            "trust",
-            "anticipation"
-        ],
-        "tracking_granularities": [
-            "sentence",
-            "paragraph",
-            "section",
-            "overall"
-        ],
-        "bias_types": [
-            "cognitive",
-            "confirmation",
-            "anchoring",
-            "availability",
-            "gender",
-            "racial",
-            "political",
-            "cultural",
-            "linguistic"
-        ],
-        "context_types": [
-            "general",
-            "business",
-            "academic",
-            "legal",
-            "medical",
-            "customer_service",
-            "marketing"
-        ],
-        "comparison_criteria": [
-            "overall_sentiment",
-            "sentiment_intensity",
-            "tone",
-            "emotions",
-            "bias",
-            "context_appropriateness"
-        ],
-        "features": [
-            "sentiment_analysis",
-            "tone_analysis",
-            "emotion_detection",
-            "sentiment_tracking",
-            "bias_detection",
-            "context_sentiment",
-            "sentiment_comparison",
-            "sentiment_validation"
-        ]
+        "success": True,
+        "analysis_depths": analysis_depths
+    }
+
+@router.get("/tone-categories")
+async def get_tone_categories():
+    """Get available tone categories"""
+    
+    tone_categories = {
+        "formal": "Professional and business-appropriate",
+        "informal": "Casual and conversational",
+        "professional": "Business and industry-focused",
+        "casual": "Relaxed and friendly",
+        "authoritative": "Confident and commanding",
+        "friendly": "Warm and approachable",
+        "neutral": "Balanced and objective",
+        "emotional": "Expressive and feeling-based",
+        "objective": "Factual and unbiased",
+        "subjective": "Personal and opinion-based",
+        "confident": "Assured and certain",
+        "uncertain": "Hesitant and doubtful",
+        "respectful": "Polite and considerate",
+        "condescending": "Patronizing and superior"
+    }
+    
+    return {
+        "success": True,
+        "tone_categories": tone_categories
+    }
+
+@router.get("/emotion-categories")
+async def get_emotion_categories():
+    """Get available emotion categories (Plutchik's wheel)"""
+    
+    emotion_categories = {
+        "joy": {
+            "description": "Happiness, pleasure, contentment",
+            "intensity_levels": ["serenity", "joy", "ecstasy"]
+        },
+        "sadness": {
+            "description": "Grief, sorrow, melancholy",
+            "intensity_levels": ["pensiveness", "sadness", "grief"]
+        },
+        "anger": {
+            "description": "Rage, frustration, irritation",
+            "intensity_levels": ["annoyance", "anger", "fury"]
+        },
+        "fear": {
+            "description": "Anxiety, worry, terror",
+            "intensity_levels": ["apprehension", "fear", "terror"]
+        },
+        "surprise": {
+            "description": "Astonishment, amazement, shock",
+            "intensity_levels": ["distraction", "surprise", "amazement"]
+        },
+        "disgust": {
+            "description": "Aversion, repulsion, contempt",
+            "intensity_levels": ["boredom", "disgust", "loathing"]
+        },
+        "trust": {
+            "description": "Confidence, faith, acceptance",
+            "intensity_levels": ["acceptance", "trust", "admiration"]
+        },
+        "anticipation": {
+            "description": "Expectation, interest, vigilance",
+            "intensity_levels": ["interest", "anticipation", "vigilance"]
+        }
+    }
+    
+    return {
+        "success": True,
+        "emotion_categories": emotion_categories
+    }
+
+@router.get("/bias-types")
+async def get_bias_types():
+    """Get available bias types for detection"""
+    
+    bias_types = {
+        "cognitive": {
+            "description": "General cognitive biases",
+            "examples": ["confirmation bias", "anchoring bias", "availability bias"]
+        },
+        "confirmation": {
+            "description": "Seeking confirming evidence",
+            "examples": ["cherry-picking data", "ignoring counter-evidence"]
+        },
+        "anchoring": {
+            "description": "Relying on first information",
+            "examples": ["first impression bias", "initial value influence"]
+        },
+        "availability": {
+            "description": "Overestimating memorable events",
+            "examples": ["recency bias", "vividness bias"]
+        },
+        "gender": {
+            "description": "Gender-related bias",
+            "examples": ["stereotyping", "gendered language"]
+        },
+        "racial": {
+            "description": "Race-related bias",
+            "examples": ["racial stereotypes", "cultural bias"]
+        },
+        "political": {
+            "description": "Political bias",
+            "examples": ["partisan language", "ideological bias"]
+        },
+        "cultural": {
+            "description": "Cultural bias",
+            "examples": ["ethnocentrism", "cultural stereotypes"]
+        },
+        "linguistic": {
+            "description": "Language-based bias",
+            "examples": ["loaded language", "emotive terms"]
+        }
+    }
+    
+    return {
+        "success": True,
+        "bias_types": bias_types
+    }
+
+@router.get("/context-types")
+async def get_context_types():
+    """Get available context types for sentiment analysis"""
+    
+    context_types = {
+        "general": {
+            "description": "General sentiment analysis",
+            "focus": ["Overall sentiment", "General tone", "Basic emotions"]
+        },
+        "business": {
+            "description": "Business and professional context",
+            "focus": ["Professional tone", "Business implications", "Stakeholder sentiment"]
+        },
+        "academic": {
+            "description": "Academic and scholarly context",
+            "focus": ["Scholarly tone", "Research implications", "Academic rigor"]
+        },
+        "legal": {
+            "description": "Legal and regulatory context",
+            "focus": ["Legal implications", "Compliance sentiment", "Regulatory tone"]
+        },
+        "medical": {
+            "description": "Medical and healthcare context",
+            "focus": ["Clinical tone", "Patient sentiment", "Medical implications"]
+        },
+        "customer_service": {
+            "description": "Customer service context",
+            "focus": ["Customer satisfaction", "Service quality", "Support sentiment"]
+        },
+        "marketing": {
+            "description": "Marketing and advertising context",
+            "focus": ["Brand sentiment", "Marketing effectiveness", "Consumer response"]
+        }
+    }
+    
+    return {
+        "success": True,
+        "context_types": context_types
     }
