@@ -1,7 +1,7 @@
 import asyncio
-import time
-from typing import Dict, Any, List, Optional
-from uuid import UUID, uuid4
+import uuid
+from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 from ..agents.orchestrator import OrchestratorAgent
 from ..agents.ingestion import IngestionAgent
@@ -11,202 +11,278 @@ from ..agents.risk import RiskAgent
 from ..agents.qa import QAAgent
 from ..agents.compare import CompareAgent
 from ..agents.audit import AuditAgent
-from ..models.base import AgentTrace, AgentStep, Document, AgentResult
-from ..core.monitoring import record_agent_execution, set_active_agents
+from ..models.base import Document, AgentResult, AgentType
+from ..core.config import settings
 
 
 class AgentService:
-    """Service for coordinating agent execution and orchestration"""
+    """Service for managing agent execution and orchestration"""
     
     def __init__(self):
-        self.orchestrator = OrchestratorAgent()
-        self.active_traces: Dict[str, AgentTrace] = {}
-        self.trace_results: Dict[str, Dict[str, Any]] = {}
+        # Initialize the orchestrator agent
+        self.orchestrator = OrchestratorAgent(llm_model=settings.LLM_MODEL)
         
-        # Initialize all agents
-        self.ingestion_agent = IngestionAgent()
-        self.classifier_agent = ClassifierAgent()
-        self.entity_agent = EntityAgent()
-        self.risk_agent = RiskAgent()
-        self.qa_agent = QAAgent()
-        self.compare_agent = CompareAgent()
-        self.audit_agent = AuditAgent()
+        # Initialize individual agents for direct access
+        self.ingestion_agent = IngestionAgent(llm_model=settings.LLM_MODEL)
+        self.classifier_agent = ClassifierAgent(llm_model=settings.LLM_MODEL)
+        self.entity_agent = EntityAgent(llm_model=settings.LLM_MODEL)
+        self.risk_agent = RiskAgent(llm_model=settings.LLM_MODEL)
+        self.qa_agent = QAAgent(llm_model=settings.LLM_MODEL)
+        self.compare_agent = CompareAgent(llm_model=settings.LLM_MODEL)
+        self.audit_agent = AuditAgent(llm_model=settings.LLM_MODEL)
         
-        # Register agents with orchestrator
-        self.orchestrator.register_agent(self.ingestion_agent)
-        self.orchestrator.register_agent(self.classifier_agent)
-        self.orchestrator.register_agent(self.entity_agent)
-        self.orchestrator.register_agent(self.risk_agent)
-        self.orchestrator.register_agent(self.qa_agent)
-        self.orchestrator.register_agent(self.compare_agent)
-        self.orchestrator.register_agent(self.audit_agent)
-        
-        # Update active agents count
-        set_active_agents(7)
+        # Processing history
+        self.processing_history = {}
     
-    async def run_agentic_pipeline(self, goal: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Run the complete agentic pipeline"""
-        trace_id = str(uuid4())
-        
-        # Create initial trace
-        trace = AgentTrace(
-            trace_id=UUID(trace_id),
-            goal=goal,
-            context=context
-        )
-        
-        self.active_traces[trace_id] = trace
-        
+    async def process_document(self, document: Document, goal: str = "Analyze document for compliance and risks") -> Dict[str, Any]:
+        """Process a document through the complete agent pipeline"""
         try:
-            # Run orchestrator
-            start_time = time.time()
-            result = await self.orchestrator.run(goal, context)
-            duration = time.time() - start_time
+            # Generate processing ID
+            processing_id = str(uuid.uuid4())
             
-            # Record metrics
-            record_agent_execution("orchestrator", result.confidence, duration)
-            
-            # Store results
-            self.trace_results[trace_id] = {
-                "trace": trace,
-                "result": result,
-                "duration": duration,
-                "status": "completed"
+            # Initialize processing history
+            self.processing_history[processing_id] = {
+                "processing_id": processing_id,
+                "start_time": datetime.utcnow().isoformat(),
+                "document_id": getattr(document, 'id', 'unknown'),
+                "goal": goal,
+                "stages": [],
+                "status": "processing"
             }
             
-            # Update trace
-            trace.status = "completed"
-            trace.completed_at = time.time()
-            trace.total_duration_ms = int(duration * 1000)
+            # Prepare context for orchestrator
+            context = {
+                "document": document,
+                "processing_id": processing_id,
+                "goal": goal
+            }
+            
+            # Execute orchestration
+            orchestration_result = await self.orchestrator.run(goal, context)
+            
+            # Update processing history
+            self.processing_history[processing_id].update({
+                "end_time": datetime.utcnow().isoformat(),
+                "status": "completed" if orchestration_result else "failed",
+                "orchestration_result": orchestration_result.dict() if orchestration_result else None,
+                "workflow_status": self.orchestrator.get_workflow_status()
+            })
             
             return {
-                "trace_id": trace_id,
-                "status": "completed",
-                "result": result.output,
-                "confidence": result.confidence,
-                "duration_ms": int(duration * 1000)
+                "processing_id": processing_id,
+                "status": "completed" if orchestration_result else "failed",
+                "result": orchestration_result.output if orchestration_result else None,
+                "confidence": orchestration_result.confidence if orchestration_result else 0.0,
+                "rationale": orchestration_result.rationale if orchestration_result else "Processing failed",
+                "workflow_status": self.orchestrator.get_workflow_status()
             }
             
         except Exception as e:
-            trace.status = "failed"
-            self.trace_results[trace_id] = {
-                "trace": trace,
-                "error": str(e),
-                "status": "failed"
-            }
+            # Update processing history with error
+            if processing_id in self.processing_history:
+                self.processing_history[processing_id].update({
+                    "end_time": datetime.utcnow().isoformat(),
+                    "status": "failed",
+                    "error": str(e)
+                })
             
             return {
-                "trace_id": trace_id,
+                "processing_id": processing_id if 'processing_id' in locals() else "unknown",
                 "status": "failed",
-                "error": str(e)
+                "error": str(e),
+                "result": None,
+                "confidence": 0.0,
+                "rationale": f"Processing failed: {str(e)}"
             }
     
-    async def run_single_agent(self, agent_type: str, goal: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Run a single agent"""
-        agent_map = {
-            "ingestion": self.ingestion_agent,
-            "classifier": self.classifier_agent,
-            "entity": self.entity_agent,
-            "risk": self.risk_agent,
-            "qa": self.qa_agent,
-            "compare": self.compare_agent,
-            "audit": self.audit_agent
-        }
-        
-        agent = agent_map.get(agent_type)
-        if not agent:
-            raise ValueError(f"Unknown agent type: {agent_type}")
-        
-        start_time = time.time()
-        result = await agent.run(goal, context)
-        duration = time.time() - start_time
-        
-        # Record metrics
-        record_agent_execution(agent_type, result.confidence, duration)
-        
-        return {
-            "agent_type": agent_type,
-            "result": result.output,
-            "confidence": result.confidence,
-            "rationale": result.rationale,
-            "duration_ms": int(duration * 1000)
-        }
-    
-    async def process_document(self, file_path: str, goal: str = "Analyze document for compliance and risks") -> Dict[str, Any]:
-        """Process a document through the complete pipeline"""
-        context = {
-            "file_path": file_path,
-            "goal": goal
-        }
-        
-        return await self.run_agentic_pipeline(goal, context)
-    
-    async def answer_question(self, question: str, document_content: str) -> Dict[str, Any]:
-        """Answer a question about a document"""
-        context = {
-            "question": question,
-            "document": Document(content=document_content)
-        }
-        
-        return await self.run_single_agent("qa", "Answer question", context)
-    
-    async def compare_documents(self, doc_a_path: str, doc_b_path: str) -> Dict[str, Any]:
-        """Compare two documents"""
-        # First process both documents
-        doc_a_result = await self.process_document(doc_a_path, "Extract document content")
-        doc_b_result = await self.process_document(doc_b_path, "Extract document content")
-        
-        context = {
-            "document_a": doc_a_result.get("result"),
-            "document_b": doc_b_result.get("result")
-        }
-        
-        return await self.run_single_agent("compare", "Compare documents", context)
-    
-    async def get_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
-        """Get trace by ID"""
-        return self.trace_results.get(trace_id)
-    
-    async def get_trace_updates(self, trace_id: str) -> Optional[Dict[str, Any]]:
-        """Get latest updates for a trace"""
-        trace = self.active_traces.get(trace_id)
-        if not trace:
-            return None
-        
-        return {
-            "trace_id": trace_id,
-            "status": trace.status,
-            "steps": [step.dict() for step in trace.steps],
-            "total_duration_ms": trace.total_duration_ms
-        }
-    
-    async def is_trace_complete(self, trace_id: str) -> bool:
-        """Check if trace is complete"""
-        trace = self.active_traces.get(trace_id)
-        return trace is None or trace.status in ["completed", "failed"]
-    
-    async def get_all_traces(self) -> List[Dict[str, Any]]:
-        """Get all traces"""
-        return [
-            {
-                "trace_id": trace_id,
-                "goal": result["trace"].goal,
-                "status": result["status"],
-                "created_at": result["trace"].created_at.isoformat(),
-                "duration_ms": result.get("duration", 0)
+    async def execute_single_agent(self, agent_type: str, document: Document, goal: str) -> AgentResult:
+        """Execute a single agent"""
+        try:
+            # Map agent types to agent instances
+            agent_mapping = {
+                "ingestion": self.ingestion_agent,
+                "classifier": self.classifier_agent,
+                "entity": self.entity_agent,
+                "risk": self.risk_agent,
+                "qa": self.qa_agent,
+                "compare": self.compare_agent,
+                "audit": self.audit_agent
             }
-            for trace_id, result in self.trace_results.items()
-        ]
+            
+            agent = agent_mapping.get(agent_type.lower())
+            if not agent:
+                raise ValueError(f"Unknown agent type: {agent_type}")
+            
+            # Prepare context
+            context = {
+                "document": document,
+                "goal": goal
+            }
+            
+            # Execute agent
+            result = await agent.run(goal, context)
+            return result
+            
+        except Exception as e:
+            return AgentResult(
+                output=None,
+                rationale=f"Agent execution failed: {str(e)}",
+                confidence=0.0,
+                next_suggested_action="Manual processing required"
+            )
     
-    async def get_agent_summary(self) -> Dict[str, Any]:
-        """Get summary of all agents"""
-        return self.orchestrator.get_agent_summary()
+    async def compare_documents(self, document_a: Document, document_b: Document, goal: str = "Compare documents for differences and risk changes") -> Dict[str, Any]:
+        """Compare two documents using the compare agent"""
+        try:
+            # Prepare context for comparison
+            context = {
+                "document_a": document_a,
+                "document_b": document_b,
+                "goal": goal
+            }
+            
+            # Execute comparison
+            comparison_result = await self.compare_agent.run(goal, context)
+            
+            return {
+                "status": "completed" if comparison_result else "failed",
+                "result": comparison_result.output if comparison_result else None,
+                "confidence": comparison_result.confidence if comparison_result else 0.0,
+                "rationale": comparison_result.rationale if comparison_result else "Comparison failed"
+            }
+            
+        except Exception as e:
+            return {
+                "status": "failed",
+                "error": str(e),
+                "result": None,
+                "confidence": 0.0,
+                "rationale": f"Comparison failed: {str(e)}"
+            }
     
-    async def get_system_health(self) -> Dict[str, Any]:
-        """Get system health status"""
+    async def generate_audit_trail(self, document: Document, processing_history: List[Dict] = None) -> Dict[str, Any]:
+        """Generate audit trail for a document"""
+        try:
+            # Prepare context for audit
+            context = {
+                "document": document,
+                "processing_history": processing_history or [],
+                "goal": "Generate comprehensive audit trail"
+            }
+            
+            # Execute audit
+            audit_result = await self.audit_agent.run("Generate audit trail", context)
+            
+            return {
+                "status": "completed" if audit_result else "failed",
+                "result": audit_result.output if audit_result else None,
+                "confidence": audit_result.confidence if audit_result else 0.0,
+                "rationale": audit_result.rationale if audit_result else "Audit generation failed"
+            }
+            
+        except Exception as e:
+            return {
+                "status": "failed",
+                "error": str(e),
+                "result": None,
+                "confidence": 0.0,
+                "rationale": f"Audit generation failed: {str(e)}"
+            }
+    
+    async def generate_qa(self, document: Document, goal: str = "Generate questions and answers about the document") -> Dict[str, Any]:
+        """Generate questions and answers for a document"""
+        try:
+            # Prepare context for QA generation
+            context = {
+                "document": document,
+                "goal": goal
+            }
+            
+            # Execute QA generation
+            qa_result = await self.qa_agent.run(goal, context)
+            
+            return {
+                "status": "completed" if qa_result else "failed",
+                "result": qa_result.output if qa_result else None,
+                "confidence": qa_result.confidence if qa_result else 0.0,
+                "rationale": qa_result.rationale if qa_result else "QA generation failed"
+            }
+            
+        except Exception as e:
+            return {
+                "status": "failed",
+                "error": str(e),
+                "result": None,
+                "confidence": 0.0,
+                "rationale": f"QA generation failed: {str(e)}"
+            }
+    
+    def get_processing_status(self, processing_id: str) -> Optional[Dict[str, Any]]:
+        """Get processing status for a given ID"""
+        return self.processing_history.get(processing_id)
+    
+    def get_all_processing_history(self) -> List[Dict[str, Any]]:
+        """Get all processing history"""
+        return list(self.processing_history.values())
+    
+    def get_agent_capabilities(self) -> Dict[str, Any]:
+        """Get information about available agents and their capabilities"""
         return {
-            "status": "healthy",
-            "active_traces": len(self.active_traces),
-            "total_traces": len(self.trace_results),
-            "agents": await self.get_agent_summary()
+            "orchestrator": {
+                "name": "OrchestratorAgent",
+                "description": "Coordinates the complete document processing workflow",
+                "capabilities": ["Workflow planning", "Execution monitoring", "Stage coordination"]
+            },
+            "ingestion": {
+                "name": "IngestionAgent",
+                "description": "Extracts and normalizes text from documents",
+                "capabilities": ["OCR", "PDF parsing", "Text normalization"]
+            },
+            "classifier": {
+                "name": "ClassifierAgent",
+                "description": "Classifies documents and analyzes content structure",
+                "capabilities": ["Document classification", "Content analysis", "Domain identification"]
+            },
+            "entity": {
+                "name": "EntityAgent",
+                "description": "Extracts named entities and key information",
+                "capabilities": ["Named entity recognition", "Clause extraction", "Key information extraction"]
+            },
+            "risk": {
+                "name": "RiskAgent",
+                "description": "Assesses compliance, financial, and operational risks",
+                "capabilities": ["Compliance risk analysis", "Financial risk analysis", "Operational risk analysis"]
+            },
+            "qa": {
+                "name": "QAAgent",
+                "description": "Generates questions and answers about documents",
+                "capabilities": ["Factual question generation", "Compliance question generation", "Risk question generation"]
+            },
+            "compare": {
+                "name": "CompareAgent",
+                "description": "Compares documents for differences and changes",
+                "capabilities": ["Semantic comparison", "Structural comparison", "Compliance comparison"]
+            },
+            "audit": {
+                "name": "AuditAgent",
+                "description": "Generates audit trails and compliance reports",
+                "capabilities": ["Audit trail generation", "Compliance reporting", "Audit bundle creation"]
+            }
         }
+    
+    def get_workflow_status(self) -> Dict[str, Any]:
+        """Get current workflow status from orchestrator"""
+        return self.orchestrator.get_workflow_status()
+    
+    async def cleanup_old_processing_history(self, max_age_hours: int = 24):
+        """Clean up old processing history"""
+        cutoff_time = datetime.utcnow().timestamp() - (max_age_hours * 3600)
+        
+        to_remove = []
+        for processing_id, history in self.processing_history.items():
+            start_time = datetime.fromisoformat(history["start_time"].replace('Z', '+00:00')).timestamp()
+            if start_time < cutoff_time:
+                to_remove.append(processing_id)
+        
+        for processing_id in to_remove:
+            del self.processing_history[processing_id]

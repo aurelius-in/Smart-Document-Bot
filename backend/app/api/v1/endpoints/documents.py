@@ -9,9 +9,9 @@ from pydantic import BaseModel
 from ...core.security import get_current_user, require_permissions
 from ...core.config import settings
 from ...services.agent_service import AgentService
+from ...models.base import Document, DocumentType
 
 router = APIRouter()
-
 
 class DocumentInfo(BaseModel):
     """Document information model"""
@@ -27,7 +27,6 @@ class DocumentInfo(BaseModel):
     entities: Optional[List[dict]] = None
     confidence: Optional[float] = None
 
-
 class DocumentUploadResponse(BaseModel):
     """Response model for document upload"""
     fileId: str
@@ -36,16 +35,13 @@ class DocumentUploadResponse(BaseModel):
     status: str
     message: Optional[str] = None
 
-
 class PaginatedResponse(BaseModel):
     """Paginated response model"""
     data: List[DocumentInfo]
     pagination: dict
 
-
-# Mock document storage - in production, this would be a database
+# Mock document storage
 DOCUMENT_STORE = {}
-
 
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
@@ -56,85 +52,96 @@ async def upload_document(
     agent_service: AgentService = Depends()
 ):
     """Upload and optionally process a document"""
-    
-    # Validate file type
-    file_extension = os.path.splitext(file.filename)[1].lower()
-    if file_extension not in settings.ALLOWED_FILE_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type {file_extension} not allowed. Allowed types: {settings.ALLOWED_FILE_TYPES}"
-        )
-    
-    # Validate file size
-    if file.size and file.size > settings.MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File size {file.size} exceeds maximum allowed size of {settings.MAX_FILE_SIZE}"
-        )
-    
     try:
-        # Create unique document ID
-        document_id = str(uuid.uuid4())
-        filename = f"{document_id}_{file.filename}"
-        file_path = os.path.join(settings.UPLOAD_DIR, filename)
+        # Validate file
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No filename provided")
         
-        # Ensure upload directory exists
-        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+        # Generate document ID
+        document_id = str(uuid.uuid4())
+        
+        # Create upload directory if it doesn't exist
+        upload_dir = os.path.join(settings.UPLOAD_DIR, document_id)
+        os.makedirs(upload_dir, exist_ok=True)
         
         # Save file
+        file_path = os.path.join(upload_dir, file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
         # Get file size
         file_size = os.path.getsize(file_path)
         
-        # Create document record
-        document_info = {
-            "id": document_id,
-            "filename": file.filename,
-            "size": file_size,
-            "type": file_extension,
-            "status": "uploaded",
-            "uploadedAt": datetime.utcnow().isoformat(),
-            "processedAt": None,
-            "metadata": {
+        # Create document object
+        document = Document(
+            id=document_id,
+            filename=file.filename,
+            content="",  # Will be extracted during processing
+            doc_type=DocumentType.UNKNOWN,
+            metadata={
+                "file_path": file_path,
+                "file_size": file_size,
                 "content_type": file.content_type,
                 "uploaded_by": current_user["email"],
-                "file_path": file_path
-            },
-            "extractedText": None,
-            "entities": None,
-            "confidence": None
+                "uploaded_at": datetime.utcnow().isoformat()
+            }
+        )
+        
+        # Store document
+        DOCUMENT_STORE[document_id] = {
+            "document": document,
+            "status": "uploaded",
+            "uploaded_at": datetime.utcnow().isoformat(),
+            "processed_at": None,
+            "processing_result": None
         }
         
-        # Store document info
-        DOCUMENT_STORE[document_id] = document_info
-        
-        # Process document if requested
+        # Process immediately if requested
         if process_immediately:
-            try:
-                result = await agent_service.process_document(file_path, goal)
-                document_info["status"] = "completed"
-                document_info["processedAt"] = datetime.utcnow().isoformat()
-                document_info["extractedText"] = result.get("extracted_text", "")
-                document_info["entities"] = result.get("entities", [])
-                document_info["confidence"] = result.get("confidence", 0.0)
-                document_info["metadata"]["trace_id"] = result.get("trace_id")
-            except Exception as e:
-                document_info["status"] = "error"
-                document_info["metadata"]["error"] = str(e)
+            # Extract text first using ingestion agent
+            ingestion_result = await agent_service.execute_single_agent(
+                "ingestion", 
+                document, 
+                "Extract text from uploaded document"
+            )
+            
+            if ingestion_result and ingestion_result.output:
+                # Update document with extracted content
+                document.content = ingestion_result.output.get("extracted_text", "")
+                document.metadata.update({
+                    "extraction_result": ingestion_result.output,
+                    "extracted_at": datetime.utcnow().isoformat()
+                })
+                
+                # Process through complete pipeline
+                processing_result = await agent_service.process_document(document, goal)
+                
+                # Update document store
+                DOCUMENT_STORE[document_id].update({
+                    "status": processing_result["status"],
+                    "processed_at": datetime.utcnow().isoformat(),
+                    "processing_result": processing_result,
+                    "document": document
+                })
+                
+                return DocumentUploadResponse(
+                    fileId=document_id,
+                    filename=file.filename,
+                    size=file_size,
+                    status=processing_result["status"],
+                    message=f"Document processed with {processing_result['confidence']:.2f} confidence"
+                )
         
         return DocumentUploadResponse(
             fileId=document_id,
             filename=file.filename,
             size=file_size,
-            status=document_info["status"],
+            status="uploaded",
             message="Document uploaded successfully"
         )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
 
 @router.get("/", response_model=PaginatedResponse)
 async def get_documents(
@@ -145,31 +152,45 @@ async def get_documents(
     """Get paginated list of documents"""
     try:
         # Get all documents
-        documents = list(DOCUMENT_STORE.values())
+        all_documents = list(DOCUMENT_STORE.values())
         
         # Calculate pagination
-        total = len(documents)
+        total = len(all_documents)
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
-        paginated_docs = documents[start_idx:end_idx]
         
-        # Convert to DocumentInfo models
-        document_infos = [
-            DocumentInfo(
-                id=doc["id"],
-                filename=doc["filename"],
-                size=doc["size"],
-                type=doc["type"],
-                status=doc["status"],
-                uploadedAt=doc["uploadedAt"],
-                processedAt=doc["processedAt"],
-                metadata=doc["metadata"],
-                extractedText=doc["extractedText"],
-                entities=doc["entities"],
-                confidence=doc["confidence"]
+        # Get page of documents
+        page_documents = all_documents[start_idx:end_idx]
+        
+        # Convert to DocumentInfo
+        document_infos = []
+        for doc_data in page_documents:
+            document = doc_data["document"]
+            processing_result = doc_data.get("processing_result", {})
+            
+            # Extract entities from processing result
+            entities = []
+            if processing_result and processing_result.get("result"):
+                orchestration_result = processing_result["result"]
+                if orchestration_result and "execution_results" in orchestration_result:
+                    entity_result = orchestration_result["execution_results"].get("stage_3")  # Entity stage
+                    if entity_result and entity_result.output:
+                        entities = entity_result.output.get("entities", [])
+            
+            document_info = DocumentInfo(
+                id=document.id,
+                filename=document.filename,
+                size=document.metadata.get("file_size", 0),
+                type=document.doc_type.value if document.doc_type else "unknown",
+                status=doc_data["status"],
+                uploadedAt=doc_data["uploaded_at"],
+                processedAt=doc_data.get("processed_at"),
+                metadata=document.metadata,
+                extractedText=document.content[:500] + "..." if len(document.content) > 500 else document.content,
+                entities=entities,
+                confidence=processing_result.get("confidence", 0.0) if processing_result else None
             )
-            for doc in paginated_docs
-        ]
+            document_infos.append(document_info)
         
         return PaginatedResponse(
             data=document_infos,
@@ -177,13 +198,12 @@ async def get_documents(
                 "page": page,
                 "limit": limit,
                 "total": total,
-                "totalPages": (total + limit - 1) // limit
+                "pages": (total + limit - 1) // limit
             }
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve documents: {str(e)}")
 
 @router.get("/{document_id}", response_model=DocumentInfo)
 async def get_document(
@@ -195,24 +215,37 @@ async def get_document(
         if document_id not in DOCUMENT_STORE:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        doc = DOCUMENT_STORE[document_id]
+        doc_data = DOCUMENT_STORE[document_id]
+        document = doc_data["document"]
+        processing_result = doc_data.get("processing_result", {})
+        
+        # Extract entities from processing result
+        entities = []
+        if processing_result and processing_result.get("result"):
+            orchestration_result = processing_result["result"]
+            if orchestration_result and "execution_results" in orchestration_result:
+                entity_result = orchestration_result["execution_results"].get("stage_3")  # Entity stage
+                if entity_result and entity_result.output:
+                    entities = entity_result.output.get("entities", [])
+        
         return DocumentInfo(
-            id=doc["id"],
-            filename=doc["filename"],
-            size=doc["size"],
-            type=doc["type"],
-            status=doc["status"],
-            uploadedAt=doc["uploadedAt"],
-            processedAt=doc["processedAt"],
-            metadata=doc["metadata"],
-            extractedText=doc["extractedText"],
-            entities=doc["entities"],
-            confidence=doc["confidence"]
+            id=document.id,
+            filename=document.filename,
+            size=document.metadata.get("file_size", 0),
+            type=document.doc_type.value if document.doc_type else "unknown",
+            status=doc_data["status"],
+            uploadedAt=doc_data["uploaded_at"],
+            processedAt=doc_data.get("processed_at"),
+            metadata=document.metadata,
+            extractedText=document.content,
+            entities=entities,
+            confidence=processing_result.get("confidence", 0.0) if processing_result else None
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve document: {str(e)}")
 
 @router.post("/{document_id}/process")
 async def process_document(
@@ -221,43 +254,52 @@ async def process_document(
     current_user: dict = Depends(require_permissions(["analyze"])),
     agent_service: AgentService = Depends()
 ):
-    """Process an uploaded document"""
+    """Process a document through the agent pipeline"""
     try:
         if document_id not in DOCUMENT_STORE:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        doc = DOCUMENT_STORE[document_id]
-        file_path = doc["metadata"]["file_path"]
+        doc_data = DOCUMENT_STORE[document_id]
+        document = doc_data["document"]
         
-        # Update status to processing
-        doc["status"] = "processing"
+        # Check if document has content, if not extract it first
+        if not document.content:
+            ingestion_result = await agent_service.execute_single_agent(
+                "ingestion", 
+                document, 
+                "Extract text from document"
+            )
+            
+            if ingestion_result and ingestion_result.output:
+                document.content = ingestion_result.output.get("extracted_text", "")
+                document.metadata.update({
+                    "extraction_result": ingestion_result.output,
+                    "extracted_at": datetime.utcnow().isoformat()
+                })
         
-        # Process document
-        result = await agent_service.process_document(file_path, goal)
+        # Process through complete pipeline
+        processing_result = await agent_service.process_document(document, goal)
         
-        # Update document info
-        doc["status"] = "completed"
-        doc["processedAt"] = datetime.utcnow().isoformat()
-        doc["extractedText"] = result.get("extracted_text", "")
-        doc["entities"] = result.get("entities", [])
-        doc["confidence"] = result.get("confidence", 0.0)
-        doc["metadata"]["trace_id"] = result.get("trace_id")
+        # Update document store
+        DOCUMENT_STORE[document_id].update({
+            "status": processing_result["status"],
+            "processed_at": datetime.utcnow().isoformat(),
+            "processing_result": processing_result,
+            "document": document
+        })
         
         return {
-            "document_id": document_id,
-            "trace_id": result.get("trace_id"),
-            "status": "completed",
-            "confidence": result.get("confidence", 0.0),
-            "duration_ms": result.get("duration_ms", 0)
+            "status": "success",
+            "processing_id": processing_result.get("processing_id"),
+            "confidence": processing_result.get("confidence", 0.0),
+            "rationale": processing_result.get("rationale", ""),
+            "workflow_status": processing_result.get("workflow_status", {})
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        # Update status to error
-        if document_id in DOCUMENT_STORE:
-            DOCUMENT_STORE[document_id]["status"] = "error"
-            DOCUMENT_STORE[document_id]["metadata"]["error"] = str(e)
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 @router.delete("/{document_id}")
 async def delete_document(
@@ -269,42 +311,51 @@ async def delete_document(
         if document_id not in DOCUMENT_STORE:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        doc = DOCUMENT_STORE[document_id]
-        file_path = doc["metadata"]["file_path"]
+        doc_data = DOCUMENT_STORE[document_id]
+        document = doc_data["document"]
         
         # Delete file from filesystem
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        file_path = document.metadata.get("file_path")
+        if file_path and os.path.exists(file_path):
+            upload_dir = os.path.dirname(file_path)
+            shutil.rmtree(upload_dir, ignore_errors=True)
         
-        # Remove from document store
+        # Remove from store
         del DOCUMENT_STORE[document_id]
         
-        return {"message": "Document deleted successfully"}
+        return {"status": "success", "message": "Document deleted successfully"}
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail=f"Deletion failed: {str(e)}")
 
 @router.get("/stats/summary")
 async def get_document_stats(current_user: dict = Depends(get_current_user)):
     """Get document statistics"""
     try:
-        documents = list(DOCUMENT_STORE.values())
+        total_documents = len(DOCUMENT_STORE)
+        processed_documents = len([d for d in DOCUMENT_STORE.values() if d["status"] == "completed"])
+        failed_documents = len([d for d in DOCUMENT_STORE.values() if d["status"] == "failed"])
+        uploaded_documents = len([d for d in DOCUMENT_STORE.values() if d["status"] == "uploaded"])
         
-        total_documents = len(documents)
-        total_size = sum(doc["size"] for doc in documents)
-        status_counts = {}
+        # Calculate average confidence
+        confidences = []
+        for doc_data in DOCUMENT_STORE.values():
+            processing_result = doc_data.get("processing_result", {})
+            if processing_result and "confidence" in processing_result:
+                confidences.append(processing_result["confidence"])
         
-        for doc in documents:
-            status = doc["status"]
-            status_counts[status] = status_counts.get(status, 0) + 1
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
         
         return {
             "total_documents": total_documents,
-            "total_size_bytes": total_size,
-            "status_distribution": status_counts,
-            "average_confidence": sum(doc.get("confidence", 0) or 0 for doc in documents) / max(total_documents, 1)
+            "processed_documents": processed_documents,
+            "failed_documents": failed_documents,
+            "uploaded_documents": uploaded_documents,
+            "average_confidence": avg_confidence,
+            "success_rate": (processed_documents / total_documents * 100) if total_documents > 0 else 0.0
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
