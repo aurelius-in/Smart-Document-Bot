@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -22,7 +22,11 @@ import {
   CircularProgress,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   Compare as CompareIcon,
@@ -33,160 +37,101 @@ import {
   ExpandMore as ExpandMoreIcon,
   Difference as DifferenceIcon,
   Security as SecurityIcon,
-  Assessment as AssessmentIcon
+  Assessment as AssessmentIcon,
+  History as HistoryIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
-
-interface ComparisonResult {
-  id: string;
-  documentA: string;
-  documentB: string;
-  comparisonType: string;
-  status: 'pending' | 'processing' | 'completed' | 'error';
-  semanticDiffs: SemanticDiff[];
-  riskDelta: RiskDelta;
-  complianceImpact: ComplianceImpact;
-  confidence: number;
-  duration: number;
-  createdAt: Date;
-}
-
-interface SemanticDiff {
-  id: string;
-  type: 'addition' | 'deletion' | 'modification';
-  section: string;
-  content: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  description: string;
-}
-
-interface RiskDelta {
-  overallRisk: 'low' | 'medium' | 'high' | 'critical';
-  riskScore: number;
-  riskFactors: string[];
-  mitigations: string[];
-}
-
-interface ComplianceImpact {
-  regulations: string[];
-  violations: string[];
-  recommendations: string[];
-  impact: 'low' | 'medium' | 'high' | 'critical';
-}
+import { toast } from 'react-hot-toast';
+import apiService, { DocumentInfo, ComparisonRequest, ComparisonResult } from '../services/apiService';
 
 const ComparePage: React.FC = () => {
   const [documentA, setDocumentA] = useState('');
   const [documentB, setDocumentB] = useState('');
-  const [comparisonType, setComparisonType] = useState('semantic');
+  const [comparisonType, setComparisonType] = useState<'semantic' | 'structural' | 'compliance' | 'risk'>('semantic');
   const [isComparing, setIsComparing] = useState(false);
   const [comparisonResults, setComparisonResults] = useState<ComparisonResult[]>([]);
+  const [availableDocuments, setAvailableDocuments] = useState<DocumentInfo[]>([]);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
+  const [selectedResult, setSelectedResult] = useState<ComparisonResult | null>(null);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
 
-  // Mock document list - in real app, this would come from API
-  const availableDocuments = [
-    { id: 'doc1', name: 'Contract_V1.pdf', type: 'contract' },
-    { id: 'doc2', name: 'Contract_V2.pdf', type: 'contract' },
-    { id: 'doc3', name: 'Policy_2023.pdf', type: 'policy' },
-    { id: 'doc4', name: 'Policy_2024.pdf', type: 'policy' },
-    { id: 'doc5', name: 'Invoice_001.pdf', type: 'invoice' },
-    { id: 'doc6', name: 'Invoice_002.pdf', type: 'invoice' }
-  ];
+  // Load available documents on component mount
+  useEffect(() => {
+    loadDocuments();
+    loadComparisonHistory();
+  }, []);
+
+  const loadDocuments = async () => {
+    try {
+      setIsLoadingDocuments(true);
+      const response = await apiService.getDocuments(1, 100);
+      setAvailableDocuments(response.data.filter(doc => doc.status === 'completed'));
+    } catch (error) {
+      console.error('Failed to load documents:', error);
+      toast.error('Failed to load documents');
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  };
+
+  const loadComparisonHistory = async () => {
+    try {
+      const response = await apiService.getComparisonHistory(1, 20);
+      setComparisonResults(response.data);
+    } catch (error) {
+      console.error('Failed to load comparison history:', error);
+      toast.error('Failed to load comparison history');
+    }
+  };
 
   const handleCompare = async () => {
     if (!documentA || !documentB) {
+      toast.error('Please select both documents to compare');
+      return;
+    }
+
+    if (documentA === documentB) {
+      toast.error('Please select different documents for comparison');
       return;
     }
 
     setIsComparing(true);
-    const resultId = Math.random().toString(36).substr(2, 9);
     
-    const newResult: ComparisonResult = {
-      id: resultId,
-      documentA,
-      documentB,
-      comparisonType,
-      status: 'processing',
-      semanticDiffs: [],
-      riskDelta: {
-        overallRisk: 'low',
-        riskScore: 0,
-        riskFactors: [],
-        mitigations: []
-      },
-      complianceImpact: {
-        regulations: [],
-        violations: [],
-        recommendations: [],
-        impact: 'low'
-      },
-      confidence: 0,
-      duration: 0,
-      createdAt: new Date()
-    };
-
-    setComparisonResults(prev => [newResult, ...prev]);
-
-    // Simulate comparison process
-    setTimeout(() => {
-      const mockResult: ComparisonResult = {
-        ...newResult,
-        status: 'completed',
-        semanticDiffs: [
-          {
-            id: 'diff1',
-            type: 'modification',
-            section: 'Terms and Conditions',
-            content: 'Payment terms changed from 30 days to 45 days',
-            severity: 'medium',
-            description: 'Payment terms modification detected'
-          },
-          {
-            id: 'diff2',
-            type: 'addition',
-            section: 'Liability Clause',
-            content: 'New liability limitation clause added',
-            severity: 'high',
-            description: 'New liability clause detected'
-          },
-          {
-            id: 'diff3',
-            type: 'deletion',
-            section: 'Force Majeure',
-            content: 'Force majeure clause removed',
-            severity: 'critical',
-            description: 'Critical clause removal detected'
-          }
-        ],
-        riskDelta: {
-          overallRisk: 'high',
-          riskScore: 0.75,
-          riskFactors: [
-            'Removal of force majeure clause',
-            'Extended payment terms',
-            'New liability limitations'
-          ],
-          mitigations: [
-            'Review force majeure implications',
-            'Assess cash flow impact',
-            'Legal review of liability changes'
-          ]
-        },
-        complianceImpact: {
-          regulations: ['SOX', 'GDPR'],
-          violations: ['Insufficient risk disclosure'],
-          recommendations: [
-            'Add risk disclosure statement',
-            'Update compliance documentation'
-          ],
-          impact: 'high'
-        },
-        confidence: 0.89,
-        duration: 2500
+    try {
+      const request: ComparisonRequest = {
+        documentAId: documentA,
+        documentBId: documentB,
+        comparisonType
       };
 
-      setComparisonResults(prev => 
-        prev.map(r => r.id === resultId ? mockResult : r)
-      );
+      const result = await apiService.compareDocuments(request);
+      
+      // Add the new result to the beginning of the list
+      setComparisonResults(prev => [result, ...prev]);
+      
+      toast.success('Document comparison started successfully!');
+      
+      // Clear the form
+      setDocumentA('');
+      setDocumentB('');
+      setComparisonType('semantic');
+      
+    } catch (error) {
+      console.error('Failed to start comparison:', error);
+      toast.error('Failed to start document comparison');
+    } finally {
       setIsComparing(false);
-    }, 3000);
+    }
+  };
+
+  const viewComparisonResult = async (resultId: string) => {
+    try {
+      const result = await apiService.getComparisonResult(resultId);
+      setSelectedResult(result);
+      setViewDialogOpen(true);
+    } catch (error) {
+      toast.error('Failed to load comparison result');
+    }
   };
 
   const getSeverityColor = (severity: string) => {
@@ -207,6 +152,21 @@ const ComparePage: React.FC = () => {
       case 'low': return 'success';
       default: return 'default';
     }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'success';
+      case 'processing': return 'primary';
+      case 'error': return 'error';
+      case 'pending': return 'warning';
+      default: return 'default';
+    }
+  };
+
+  const getDocumentName = (documentId: string) => {
+    const doc = availableDocuments.find(d => d.id === documentId);
+    return doc ? doc.filename : `Document ${documentId}`;
   };
 
   return (
@@ -231,12 +191,13 @@ const ComparePage: React.FC = () => {
                       value={documentA}
                       label="Document A"
                       onChange={(e) => setDocumentA(e.target.value)}
+                      disabled={isLoadingDocuments}
                     >
                       {availableDocuments.map((doc) => (
                         <MenuItem key={doc.id} value={doc.id}>
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
                             <FileIcon sx={{ mr: 1 }} />
-                            {doc.name}
+                            {doc.filename}
                           </Box>
                         </MenuItem>
                       ))}
@@ -250,12 +211,13 @@ const ComparePage: React.FC = () => {
                       value={documentB}
                       label="Document B"
                       onChange={(e) => setDocumentB(e.target.value)}
+                      disabled={isLoadingDocuments}
                     >
                       {availableDocuments.map((doc) => (
                         <MenuItem key={doc.id} value={doc.id}>
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
                             <FileIcon sx={{ mr: 1 }} />
-                            {doc.name}
+                            {doc.filename}
                           </Box>
                         </MenuItem>
                       ))}
@@ -268,7 +230,7 @@ const ComparePage: React.FC = () => {
                     <Select
                       value={comparisonType}
                       label="Comparison Type"
-                      onChange={(e) => setComparisonType(e.target.value)}
+                      onChange={(e) => setComparisonType(e.target.value as any)}
                     >
                       <MenuItem value="semantic">Semantic Analysis</MenuItem>
                       <MenuItem value="structural">Structural Comparison</MenuItem>
@@ -278,13 +240,12 @@ const ComparePage: React.FC = () => {
                   </FormControl>
                 </Grid>
               </Grid>
-              <Box sx={{ mt: 2 }}>
+              <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
                 <Button
                   variant="contained"
                   startIcon={<CompareIcon />}
                   onClick={handleCompare}
-                  disabled={!documentA || !documentB || isComparing}
-                  sx={{ mr: 2 }}
+                  disabled={!documentA || !documentB || isComparing || isLoadingDocuments}
                 >
                   {isComparing ? (
                     <>
@@ -294,6 +255,14 @@ const ComparePage: React.FC = () => {
                   ) : (
                     'Compare Documents'
                   )}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={loadDocuments}
+                  disabled={isLoadingDocuments}
+                >
+                  Refresh Documents
                 </Button>
                 <Button
                   variant="outlined"
@@ -311,92 +280,181 @@ const ComparePage: React.FC = () => {
         </Grid>
 
         {/* Comparison Results */}
-        {comparisonResults.map((result) => (
-          <Grid item xs={12} key={result.id}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6">
-                    Comparison Results
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  <HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Comparison History
+                </Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={loadComparisonHistory}
+                >
+                  Refresh
+                </Button>
+              </Box>
+              
+              {comparisonResults.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No comparison results yet
                   </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Chip 
-                      label={`${result.confidence * 100}% Confidence`}
-                      color="primary"
-                      size="small"
-                    />
-                    <Chip 
-                      label={`${result.duration}ms`}
-                      color="secondary"
-                      size="small"
-                    />
-                  </Box>
                 </Box>
-
-                {result.status === 'processing' && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <CircularProgress size={20} />
-                    <Typography>Processing comparison...</Typography>
-                  </Box>
-                )}
-
-                {result.status === 'completed' && (
-                  <Grid container spacing={3}>
-                    {/* Semantic Differences */}
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="h6" gutterBottom>
-                        <DifferenceIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                        Semantic Differences
-                      </Typography>
-                      <List>
-                        {result.semanticDiffs.map((diff) => (
-                          <ListItem key={diff.id} sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                              <ListItemIcon>
-                                {diff.type === 'addition' && <CheckIcon color="success" />}
-                                {diff.type === 'deletion' && <ErrorIcon color="error" />}
-                                {diff.type === 'modification' && <WarningIcon color="warning" />}
-                              </ListItemIcon>
-                              <ListItemText
-                                primary={diff.section}
-                                secondary={diff.content}
+              ) : (
+                <List>
+                  {comparisonResults.map((result, index) => (
+                    <React.Fragment key={result.id}>
+                      <ListItem>
+                        <ListItemIcon>
+                          <CompareIcon color="primary" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <Typography variant="subtitle1">
+                                {getDocumentName(result.documentAId)} vs {getDocumentName(result.documentBId)}
+                              </Typography>
+                              <Chip
+                                label={result.comparisonType}
+                                size="small"
+                                variant="outlined"
                               />
-                              <Chip 
-                                label={diff.severity}
-                                color={getSeverityColor(diff.severity)}
+                              <Chip
+                                label={result.status}
+                                color={getStatusColor(result.status)}
                                 size="small"
                               />
                             </Box>
-                            <Typography variant="body2" color="text.secondary" sx={{ ml: 4 }}>
-                              {diff.description}
-                            </Typography>
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Grid>
-
-                    {/* Risk Assessment */}
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="h6" gutterBottom>
-                        <SecurityIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                        Risk Assessment
-                      </Typography>
-                      <Box sx={{ mb: 2 }}>
-                        <Chip 
-                          label={`Risk Level: ${result.riskDelta.overallRisk.toUpperCase()}`}
-                          color={getRiskColor(result.riskDelta.overallRisk)}
-                          sx={{ mb: 1 }}
+                          }
+                          secondary={
+                            <Box>
+                              <Typography variant="body2" color="text.secondary">
+                                {new Date(result.createdAt).toLocaleString()}
+                              </Typography>
+                              {result.status === 'completed' && (
+                                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                                  <Chip
+                                    label={`${(result.confidence * 100).toFixed(1)}% Confidence`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                  <Chip
+                                    label={`${result.duration}ms`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                  {result.semanticDiffs && (
+                                    <Chip
+                                      label={`${result.semanticDiffs.length} differences`}
+                                      size="small"
+                                      variant="outlined"
+                                    />
+                                  )}
+                                </Box>
+                              )}
+                            </Box>
+                          }
                         />
-                        <Typography variant="body2" gutterBottom>
-                          Risk Score: {(result.riskDelta.riskScore * 100).toFixed(1)}%
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => viewComparisonResult(result.id)}
+                          disabled={result.status !== 'completed'}
+                        >
+                          View Details
+                        </Button>
+                      </ListItem>
+                      {index < comparisonResults.length - 1 && <Divider />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Comparison Result Details Dialog */}
+      <Dialog
+        open={viewDialogOpen}
+        onClose={() => setViewDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          Comparison Results
+          {selectedResult && (
+            <Typography variant="subtitle2" color="text.secondary">
+              {getDocumentName(selectedResult.documentAId)} vs {getDocumentName(selectedResult.documentBId)}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {selectedResult && selectedResult.status === 'completed' && (
+            <Grid container spacing={3}>
+              {/* Semantic Differences */}
+              {selectedResult.semanticDiffs && selectedResult.semanticDiffs.length > 0 && (
+                <Grid item xs={12} md={6}>
+                  <Typography variant="h6" gutterBottom>
+                    <DifferenceIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    Semantic Differences
+                  </Typography>
+                  <List>
+                    {selectedResult.semanticDiffs.map((diff: any, index: number) => (
+                      <ListItem key={index} sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                          <ListItemIcon>
+                            {diff.type === 'addition' && <CheckIcon color="success" />}
+                            {diff.type === 'deletion' && <ErrorIcon color="error" />}
+                            {diff.type === 'modification' && <WarningIcon color="warning" />}
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={diff.section}
+                            secondary={diff.content}
+                          />
+                          <Chip 
+                            label={diff.severity}
+                            color={getSeverityColor(diff.severity)}
+                            size="small"
+                          />
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ ml: 4 }}>
+                          {diff.description}
                         </Typography>
-                      </Box>
-                      
+                      </ListItem>
+                    ))}
+                  </List>
+                </Grid>
+              )}
+
+              {/* Risk Assessment */}
+              {selectedResult.riskDelta && (
+                <Grid item xs={12} md={6}>
+                  <Typography variant="h6" gutterBottom>
+                    <SecurityIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    Risk Assessment
+                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Chip 
+                      label={`Risk Level: ${selectedResult.riskDelta.overallRisk?.toUpperCase() || 'UNKNOWN'}`}
+                      color={getRiskColor(selectedResult.riskDelta.overallRisk || 'low')}
+                      sx={{ mb: 1 }}
+                    />
+                    <Typography variant="body2" gutterBottom>
+                      Risk Score: {((selectedResult.riskDelta.riskScore || 0) * 100).toFixed(1)}%
+                    </Typography>
+                  </Box>
+                  
+                  {selectedResult.riskDelta.riskFactors && (
+                    <>
                       <Typography variant="subtitle2" gutterBottom>
                         Risk Factors:
                       </Typography>
                       <Box sx={{ mb: 2 }}>
-                        {result.riskDelta.riskFactors.map((factor, index) => (
+                        {selectedResult.riskDelta.riskFactors.map((factor: string, index: number) => (
                           <Chip 
                             key={index}
                             label={factor}
@@ -405,67 +463,96 @@ const ComparePage: React.FC = () => {
                           />
                         ))}
                       </Box>
+                    </>
+                  )}
 
+                  {selectedResult.riskDelta.mitigations && (
+                    <>
                       <Typography variant="subtitle2" gutterBottom>
                         Mitigations:
                       </Typography>
                       <List dense>
-                        {result.riskDelta.mitigations.map((mitigation, index) => (
+                        {selectedResult.riskDelta.mitigations.map((mitigation: string, index: number) => (
                           <ListItem key={index}>
                             <ListItemText primary={mitigation} />
                           </ListItem>
                         ))}
                       </List>
-                    </Grid>
+                    </>
+                  )}
+                </Grid>
+              )}
 
-                    {/* Compliance Impact */}
-                    <Grid item xs={12}>
-                      <Accordion>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <AssessmentIcon sx={{ mr: 1 }} />
-                          <Typography variant="h6">Compliance Impact</Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} md={4}>
-                              <Typography variant="subtitle2" gutterBottom>
-                                Affected Regulations:
-                              </Typography>
-                              {result.complianceImpact.regulations.map((reg, index) => (
-                                <Chip key={index} label={reg} size="small" sx={{ mr: 1, mb: 1 }} />
-                              ))}
-                            </Grid>
-                            <Grid item xs={12} md={4}>
-                              <Typography variant="subtitle2" gutterBottom>
-                                Potential Violations:
-                              </Typography>
-                              {result.complianceImpact.violations.map((violation, index) => (
-                                <Alert key={index} severity="warning" sx={{ mb: 1 }}>
-                                  {violation}
-                                </Alert>
-                              ))}
-                            </Grid>
-                            <Grid item xs={12} md={4}>
-                              <Typography variant="subtitle2" gutterBottom>
-                                Recommendations:
-                              </Typography>
-                              {result.complianceImpact.recommendations.map((rec, index) => (
-                                <Alert key={index} severity="info" sx={{ mb: 1 }}>
-                                  {rec}
-                                </Alert>
-                              ))}
-                            </Grid>
+              {/* Compliance Impact */}
+              {selectedResult.complianceImpact && (
+                <Grid item xs={12}>
+                  <Accordion>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <AssessmentIcon sx={{ mr: 1 }} />
+                      <Typography variant="h6">Compliance Impact</Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Grid container spacing={2}>
+                        {selectedResult.complianceImpact.regulations && (
+                          <Grid item xs={12} md={4}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Affected Regulations:
+                            </Typography>
+                            {selectedResult.complianceImpact.regulations.map((reg: string, index: number) => (
+                              <Chip key={index} label={reg} size="small" sx={{ mr: 1, mb: 1 }} />
+                            ))}
                           </Grid>
-                        </AccordionDetails>
-                      </Accordion>
-                    </Grid>
-                  </Grid>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+                        )}
+                        {selectedResult.complianceImpact.violations && (
+                          <Grid item xs={12} md={4}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Potential Violations:
+                            </Typography>
+                            {selectedResult.complianceImpact.violations.map((violation: string, index: number) => (
+                              <Alert key={index} severity="warning" sx={{ mb: 1 }}>
+                                {violation}
+                              </Alert>
+                            ))}
+                          </Grid>
+                        )}
+                        {selectedResult.complianceImpact.recommendations && (
+                          <Grid item xs={12} md={4}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Recommendations:
+                            </Typography>
+                            {selectedResult.complianceImpact.recommendations.map((rec: string, index: number) => (
+                              <Alert key={index} severity="info" sx={{ mb: 1 }}>
+                                {rec}
+                              </Alert>
+                            ))}
+                          </Grid>
+                        )}
+                      </Grid>
+                    </AccordionDetails>
+                  </Accordion>
+                </Grid>
+              )}
+            </Grid>
+          )}
+          
+          {selectedResult && selectedResult.status !== 'completed' && (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <CircularProgress sx={{ mb: 2 }} />
+              <Typography variant="h6" gutterBottom>
+                Comparison in Progress
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Please wait while the comparison is being processed...
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewDialogOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

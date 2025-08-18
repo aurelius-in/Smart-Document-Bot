@@ -3,16 +3,10 @@ import {
   Box,
   Typography,
   Paper,
+  Button,
   Grid,
   Card,
   CardContent,
-  Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider,
-  Button,
   FormControl,
   InputLabel,
   Select,
@@ -29,199 +23,138 @@ import {
   TimelineConnector,
   TimelineContent,
   TimelineDot,
-  TimelineOppositeContent
+  TimelineOppositeContent,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+  Switch,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
-  Stop as StopIcon,
   Refresh as RefreshIcon,
-  BugReport as DebugIcon,
-  Timeline as TimelineIcon,
+  Visibility as ViewIcon,
+  ExpandMore as ExpandMoreIcon,
   CheckCircle as SuccessIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
   Info as InfoIcon,
-  ExpandMore as ExpandMoreIcon,
-  Code as CodeIcon,
-  Psychology as BrainIcon,
-  Storage as MemoryIcon,
-  Security as SecurityIcon
+  Schedule as PendingIcon,
+  Stop as StopIcon,
+  PlayCircle as StartIcon,
+  History as HistoryIcon,
+  FilterList as FilterIcon,
+  LiveTv as LiveIcon
 } from '@mui/icons-material';
-
-interface AgentStep {
-  id: string;
-  stepNumber: number;
-  agentType: string;
-  tool: string;
-  input: any;
-  output: any;
-  status: 'pending' | 'running' | 'completed' | 'error';
-  startTime: Date;
-  endTime?: Date;
-  duration?: number;
-  confidence?: number;
-  error?: string;
-  metadata?: any;
-}
-
-interface AgentTrace {
-  id: string;
-  documentId: string;
-  documentName: string;
-  status: 'running' | 'completed' | 'error' | 'paused';
-  steps: AgentStep[];
-  startTime: Date;
-  endTime?: Date;
-  totalDuration?: number;
-  overallConfidence?: number;
-  summary?: string;
-}
+import { toast } from 'react-hot-toast';
+import apiService, { AgentTrace, AgentStep } from '../services/apiService';
 
 const AgentTracePage: React.FC = () => {
   const [traces, setTraces] = useState<AgentTrace[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<AgentTrace | null>(null);
   const [isLiveMode, setIsLiveMode] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isStartingTrace, setIsStartingTrace] = useState(false);
+  const [traceDetailsOpen, setTraceDetailsOpen] = useState(false);
+  const [selectedTraceDetails, setSelectedTraceDetails] = useState<AgentTrace | null>(null);
 
-  // Mock data for demonstration
+  // Load traces on component mount
   useEffect(() => {
-    const mockTraces: AgentTrace[] = [
-      {
-        id: 'trace1',
-        documentId: 'doc1',
-        documentName: 'Contract_V1.pdf',
-        status: 'completed',
-        startTime: new Date(Date.now() - 300000),
-        endTime: new Date(Date.now() - 60000),
-        totalDuration: 240000,
-        overallConfidence: 0.89,
-        summary: 'Document processed successfully with high confidence',
-        steps: [
-          {
-            id: 'step1',
-            stepNumber: 1,
-            agentType: 'classifier',
-            tool: 'document_classification',
-            input: { text: 'Contract document content...' },
-            output: { documentType: 'contract', domain: 'legal', confidence: 0.95 },
-            status: 'completed',
-            startTime: new Date(Date.now() - 300000),
-            endTime: new Date(Date.now() - 280000),
-            duration: 20000,
-            confidence: 0.95
-          },
-          {
-            id: 'step2',
-            stepNumber: 2,
-            agentType: 'extractor',
-            tool: 'entity_extraction',
-            input: { text: 'Contract document content...', documentType: 'contract' },
-            output: { 
-              entities: [
-                { type: 'party', value: 'Acme Corp', confidence: 0.98 },
-                { type: 'date', value: '2024-01-15', confidence: 0.92 },
-                { type: 'amount', value: '$50,000', confidence: 0.89 }
-              ]
-            },
-            status: 'completed',
-            startTime: new Date(Date.now() - 280000),
-            endTime: new Date(Date.now() - 240000),
-            duration: 40000,
-            confidence: 0.93
-          },
-          {
-            id: 'step3',
-            stepNumber: 3,
-            agentType: 'risk',
-            tool: 'risk_assessment',
-            input: { entities: [...], documentType: 'contract' },
-            output: { 
-              riskLevel: 'medium',
-              riskScore: 0.65,
-              riskFactors: ['Payment terms', 'Liability clauses'],
-              mitigations: ['Review payment terms', 'Legal consultation recommended']
-            },
-            status: 'completed',
-            startTime: new Date(Date.now() - 240000),
-            endTime: new Date(Date.now() - 180000),
-            duration: 60000,
-            confidence: 0.87
-          },
-          {
-            id: 'step4',
-            stepNumber: 4,
-            agentType: 'compliance',
-            tool: 'compliance_check',
-            input: { documentType: 'contract', riskAssessment: {...} },
-            output: {
-              regulations: ['SOX', 'GDPR'],
-              violations: [],
-              recommendations: ['Add data protection clause'],
-              complianceScore: 0.92
-            },
-            status: 'completed',
-            startTime: new Date(Date.now() - 180000),
-            endTime: new Date(Date.now() - 120000),
-            duration: 60000,
-            confidence: 0.92
-          }
-        ]
-      },
-      {
-        id: 'trace2',
-        documentId: 'doc2',
-        documentName: 'Policy_2024.pdf',
-        status: 'running',
-        startTime: new Date(Date.now() - 120000),
-        steps: [
-          {
-            id: 'step1',
-            stepNumber: 1,
-            agentType: 'classifier',
-            tool: 'document_classification',
-            input: { text: 'Policy document content...' },
-            output: { documentType: 'policy', domain: 'corporate', confidence: 0.91 },
-            status: 'completed',
-            startTime: new Date(Date.now() - 120000),
-            endTime: new Date(Date.now() - 100000),
-            duration: 20000,
-            confidence: 0.91
-          },
-          {
-            id: 'step2',
-            stepNumber: 2,
-            agentType: 'extractor',
-            tool: 'entity_extraction',
-            input: { text: 'Policy document content...', documentType: 'policy' },
-            output: null,
-            status: 'running',
-            startTime: new Date(Date.now() - 100000),
-            confidence: 0.0
-          }
-        ]
-      }
-    ];
-
-    setTraces(mockTraces);
+    loadTraces();
   }, []);
+
+  // Set up live updates if live mode is enabled
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isLiveMode) {
+      interval = setInterval(() => {
+        loadTraces();
+      }, 5000); // Refresh every 5 seconds
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isLiveMode]);
+
+  const loadTraces = async () => {
+    try {
+      setIsLoading(true);
+      const response = await apiService.getAgentTraces(1, 50);
+      setTraces(response.data);
+      
+      // Update selected trace if it exists in the new data
+      if (selectedTrace) {
+        const updatedTrace = response.data.find(t => t.id === selectedTrace.id);
+        if (updatedTrace) {
+          setSelectedTrace(updatedTrace);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load traces:', error);
+      toast.error('Failed to load agent traces');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const startNewTrace = async () => {
+    try {
+      setIsStartingTrace(true);
+      const newTrace = await apiService.startAgentTrace({
+        documentId: '', // Will be set by backend based on context
+        traceType: 'document_processing'
+      });
+      
+      setTraces(prev => [newTrace, ...prev]);
+      setSelectedTrace(newTrace);
+      toast.success('New agent trace started successfully!');
+    } catch (error) {
+      console.error('Failed to start trace:', error);
+      toast.error('Failed to start new agent trace');
+    } finally {
+      setIsStartingTrace(false);
+    }
+  };
+
+  const viewTraceDetails = async (traceId: string) => {
+    try {
+      const trace = await apiService.getAgentTrace(traceId);
+      setSelectedTraceDetails(trace);
+      setTraceDetailsOpen(true);
+    } catch (error) {
+      toast.error('Failed to load trace details');
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed': return 'success';
-      case 'running': return 'primary';
+      case 'processing': return 'primary';
       case 'error': return 'error';
-      case 'paused': return 'warning';
+      case 'pending': return 'warning';
       default: return 'default';
     }
   };
 
-  const getStepIcon = (agentType: string) => {
-    switch (agentType) {
-      case 'classifier': return <BrainIcon />;
-      case 'extractor': return <CodeIcon />;
-      case 'risk': return <SecurityIcon />;
-      case 'compliance': return <SecurityIcon />;
-      case 'memory': return <MemoryIcon />;
+  const getStepIcon = (stepType: string) => {
+    switch (stepType) {
+      case 'ocr': return <InfoIcon />;
+      case 'extraction': return <ViewIcon />;
+      case 'analysis': return <StartIcon />;
+      case 'validation': return <SuccessIcon />;
+      case 'compliance_check': return <WarningIcon />;
       default: return <InfoIcon />;
     }
   };
@@ -229,30 +162,17 @@ const AgentTracePage: React.FC = () => {
   const getStepStatusIcon = (status: string) => {
     switch (status) {
       case 'completed': return <SuccessIcon color="success" />;
-      case 'running': return <CircularProgress size={20} />;
+      case 'processing': return <CircularProgress size={16} />;
       case 'error': return <ErrorIcon color="error" />;
-      case 'pending': return <InfoIcon color="info" />;
+      case 'pending': return <PendingIcon color="disabled" />;
       default: return <InfoIcon />;
     }
   };
 
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${(ms / 60000).toFixed(1)}m`;
-  };
-
-  const startNewTrace = () => {
-    const newTrace: AgentTrace = {
-      id: `trace${Date.now()}`,
-      documentId: 'new-doc',
-      documentName: 'New Document',
-      status: 'running',
-      startTime: new Date(),
-      steps: []
-    };
-    setTraces(prev => [newTrace, ...prev]);
-    setSelectedTrace(newTrace);
+  const formatDuration = (duration: number) => {
+    if (duration < 1000) return `${duration}ms`;
+    if (duration < 60000) return `${(duration / 1000).toFixed(1)}s`;
+    return `${(duration / 60000).toFixed(1)}m`;
   };
 
   const filteredTraces = traces.filter(trace => 
@@ -262,7 +182,7 @@ const AgentTracePage: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        Agent Trace
+        Agent Trace Monitor
       </Typography>
 
       <Grid container spacing={3}>
@@ -270,223 +190,402 @@ const AgentTracePage: React.FC = () => {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  <HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Trace Controls
+                </Typography>
                 <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<PlayIcon />}
-                    onClick={startNewTrace}
-                  >
-                    Start New Trace
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<RefreshIcon />}
-                    onClick={() => window.location.reload()}
-                  >
-                    Refresh
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<DebugIcon />}
-                    color={isLiveMode ? 'primary' : 'inherit'}
-                    onClick={() => setIsLiveMode(!isLiveMode)}
-                  >
-                    {isLiveMode ? 'Live Mode ON' : 'Live Mode OFF'}
-                  </Button>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={isLiveMode}
+                        onChange={(e) => setIsLiveMode(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label={
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <LiveIcon sx={{ mr: 1 }} />
+                        Live Mode
+                      </Box>
+                    }
+                  />
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <InputLabel>Filter Status</InputLabel>
+                    <Select
+                      value={filterStatus}
+                      label="Filter Status"
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                    >
+                      <MenuItem value="all">All Status</MenuItem>
+                      <MenuItem value="pending">Pending</MenuItem>
+                      <MenuItem value="processing">Processing</MenuItem>
+                      <MenuItem value="completed">Completed</MenuItem>
+                      <MenuItem value="error">Error</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Box>
-                <FormControl sx={{ minWidth: 200 }}>
-                  <InputLabel>Filter Status</InputLabel>
-                  <Select
-                    value={filterStatus}
-                    label="Filter Status"
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                  >
-                    <MenuItem value="all">All Traces</MenuItem>
-                    <MenuItem value="running">Running</MenuItem>
-                    <MenuItem value="completed">Completed</MenuItem>
-                    <MenuItem value="error">Error</MenuItem>
-                    <MenuItem value="paused">Paused</MenuItem>
-                  </Select>
-                </FormControl>
+              </Box>
+              
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button
+                  variant="contained"
+                  startIcon={<PlayIcon />}
+                  onClick={startNewTrace}
+                  disabled={isStartingTrace}
+                >
+                  {isStartingTrace ? (
+                    <>
+                      <CircularProgress size={20} sx={{ mr: 1 }} />
+                      Starting...
+                    </>
+                  ) : (
+                    'Start New Trace'
+                  )}
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={loadTraces}
+                  disabled={isLoading}
+                >
+                  Refresh Traces
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => setSelectedTrace(null)}
+                  disabled={!selectedTrace}
+                >
+                  Clear Selection
+                </Button>
               </Box>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Trace List */}
+        {/* Traces List */}
         <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Recent Traces
+                <FilterIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Recent Traces ({filteredTraces.length})
               </Typography>
-              <List>
-                {filteredTraces.map((trace) => (
-                  <ListItem
-                    key={trace.id}
-                    button
-                    selected={selectedTrace?.id === trace.id}
-                    onClick={() => setSelectedTrace(trace)}
-                    sx={{ mb: 1, borderRadius: 1 }}
-                  >
-                    <ListItemIcon>
-                      <TimelineIcon />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={trace.documentName}
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {trace.startTime.toLocaleTimeString()}
-                          </Typography>
-                          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                            <Chip
-                              label={trace.status}
-                              color={getStatusColor(trace.status)}
-                              size="small"
-                            />
-                            {trace.totalDuration && (
+              
+              {isLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : filteredTraces.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No traces found
+                  </Typography>
+                </Box>
+              ) : (
+                <List>
+                  {filteredTraces.map((trace, index) => (
+                    <React.Fragment key={trace.id}>
+                      <ListItem
+                        button
+                        selected={selectedTrace?.id === trace.id}
+                        onClick={() => setSelectedTrace(trace)}
+                      >
+                        <ListItemIcon>
+                          <StartIcon color="primary" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="subtitle2">
+                                Trace #{trace.id.slice(-8)}
+                              </Typography>
                               <Chip
-                                label={formatDuration(trace.totalDuration)}
+                                label={trace.status}
+                                color={getStatusColor(trace.status)}
                                 size="small"
-                                variant="outlined"
                               />
-                            )}
-                          </Box>
-                        </Box>
-                      }
-                    />
-                  </ListItem>
-                ))}
-              </List>
+                            </Box>
+                          }
+                          secondary={
+                            <Box>
+                              <Typography variant="body2" color="text.secondary">
+                                {new Date(trace.createdAt).toLocaleString()}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {trace.steps?.length || 0} steps • {formatDuration(trace.duration || 0)}
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                        <Button
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            viewTraceDetails(trace.id);
+                          }}
+                        >
+                          Details
+                        </Button>
+                      </ListItem>
+                      {index < filteredTraces.length - 1 && <Divider />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              )}
             </CardContent>
           </Card>
         </Grid>
 
         {/* Trace Details */}
         <Grid item xs={12} md={8}>
-          {selectedTrace ? (
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                  <Typography variant="h6">
-                    Trace: {selectedTrace.documentName}
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Chip
-                      label={selectedTrace.status}
-                      color={getStatusColor(selectedTrace.status)}
-                    />
-                    {selectedTrace.overallConfidence && (
+          <Card>
+            <CardContent>
+              {selectedTrace ? (
+                <>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                    <Typography variant="h6">
+                      Trace Execution Timeline
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Chip
-                        label={`${(selectedTrace.overallConfidence * 100).toFixed(1)}% Confidence`}
-                        color="primary"
-                        variant="outlined"
+                        label={selectedTrace.status}
+                        color={getStatusColor(selectedTrace.status)}
                       />
-                    )}
+                      <Chip
+                        label={formatDuration(selectedTrace.duration || 0)}
+                        variant="outlined"
+                        size="small"
+                      />
+                    </Box>
                   </Box>
-                </Box>
 
-                {/* Trace Summary */}
-                {selectedTrace.summary && (
-                  <Alert severity="info" sx={{ mb: 3 }}>
-                    {selectedTrace.summary}
-                  </Alert>
-                )}
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Started: {new Date(selectedTrace.createdAt).toLocaleString()}
+                    {selectedTrace.completedAt && (
+                      <> • Completed: {new Date(selectedTrace.completedAt).toLocaleString()}</>
+                    )}
+                  </Typography>
 
-                {/* Timeline View */}
-                <Typography variant="h6" gutterBottom>
-                  Execution Timeline
-                </Typography>
-                <Timeline>
-                  {selectedTrace.steps.map((step, index) => (
-                    <TimelineItem key={step.id}>
-                      <TimelineOppositeContent sx={{ m: 'auto 0' }} variant="body2" color="text.secondary">
-                        {step.startTime.toLocaleTimeString()}
-                        {step.duration && (
-                          <Typography variant="caption" display="block">
-                            {formatDuration(step.duration)}
-                          </Typography>
-                        )}
-                      </TimelineOppositeContent>
-                      <TimelineSeparator>
-                        <TimelineDot color={step.status === 'completed' ? 'success' : step.status === 'error' ? 'error' : 'primary'}>
-                          {getStepIcon(step.agentType)}
-                        </TimelineDot>
-                        {index < selectedTrace.steps.length - 1 && <TimelineConnector />}
-                      </TimelineSeparator>
-                      <TimelineContent>
-                        <Accordion>
-                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
-                              <Typography variant="subtitle1">
-                                Step {step.stepNumber}: {step.agentType} - {step.tool}
-                              </Typography>
-                              <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
-                                {getStepStatusIcon(step.status)}
-                                {step.confidence && (
+                  {selectedTrace.steps && selectedTrace.steps.length > 0 ? (
+                    <Timeline position="alternate">
+                      {selectedTrace.steps.map((step: AgentStep, index: number) => (
+                        <TimelineItem key={step.id}>
+                          <TimelineOppositeContent sx={{ m: 'auto 0' }} variant="body2" color="text.secondary">
+                            {step.duration ? formatDuration(step.duration) : 'Pending'}
+                          </TimelineOppositeContent>
+                          <TimelineSeparator>
+                            <TimelineDot color={getStatusColor(step.status)}>
+                              {getStepIcon(step.type)}
+                            </TimelineDot>
+                            {index < selectedTrace.steps!.length - 1 && <TimelineConnector />}
+                          </TimelineSeparator>
+                          <TimelineContent sx={{ py: '12px', px: 2 }}>
+                            <Accordion>
+                              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  {getStepStatusIcon(step.status)}
+                                  <Typography variant="subtitle2">
+                                    {step.name}
+                                  </Typography>
                                   <Chip
-                                    label={`${(step.confidence * 100).toFixed(0)}%`}
+                                    label={step.type}
                                     size="small"
                                     variant="outlined"
                                   />
-                                )}
-                              </Box>
-                            </Box>
-                          </AccordionSummary>
-                          <AccordionDetails>
-                            <Grid container spacing={2}>
-                              <Grid item xs={12} md={6}>
-                                <Typography variant="subtitle2" gutterBottom>
-                                  Input:
-                                </Typography>
-                                <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
-                                  <pre style={{ margin: 0, fontSize: '0.875rem' }}>
-                                    {JSON.stringify(step.input, null, 2)}
-                                  </pre>
-                                </Paper>
-                              </Grid>
-                              <Grid item xs={12} md={6}>
-                                <Typography variant="subtitle2" gutterBottom>
-                                  Output:
-                                </Typography>
-                                <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
-                                  <pre style={{ margin: 0, fontSize: '0.875rem' }}>
-                                    {JSON.stringify(step.output, null, 2)}
-                                  </pre>
-                                </Paper>
-                              </Grid>
-                              {step.error && (
-                                <Grid item xs={12}>
-                                  <Alert severity="error">
-                                    Error: {step.error}
-                                  </Alert>
-                                </Grid>
-                              )}
-                            </Grid>
-                          </AccordionDetails>
-                        </Accordion>
-                      </TimelineContent>
-                    </TimelineItem>
-                  ))}
-                </Timeline>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent>
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <TimelineIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                  <Typography variant="h6" color="text.secondary">
+                                </Box>
+                              </AccordionSummary>
+                              <AccordionDetails>
+                                <Box>
+                                  <Typography variant="body2" gutterBottom>
+                                    <strong>Status:</strong> {step.status}
+                                  </Typography>
+                                  {step.input && (
+                                    <Typography variant="body2" gutterBottom>
+                                      <strong>Input:</strong> {step.input}
+                                    </Typography>
+                                  )}
+                                  {step.output && (
+                                    <Typography variant="body2" gutterBottom>
+                                      <strong>Output:</strong> {step.output}
+                                    </Typography>
+                                  )}
+                                  {step.error && (
+                                    <Alert severity="error" sx={{ mt: 1 }}>
+                                      {step.error}
+                                    </Alert>
+                                  )}
+                                  {step.metadata && Object.keys(step.metadata).length > 0 && (
+                                    <Typography variant="body2" sx={{ mt: 1 }}>
+                                      <strong>Metadata:</strong> {JSON.stringify(step.metadata, null, 2)}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </AccordionDetails>
+                            </Accordion>
+                          </TimelineContent>
+                        </TimelineItem>
+                      ))}
+                    </Timeline>
+                  ) : (
+                    <Box sx={{ textAlign: 'center', py: 4 }}>
+                      <Typography variant="body1" color="text.secondary">
+                        No steps recorded yet
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {selectedTrace.error && (
+                    <Alert severity="error" sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Trace Error:
+                      </Typography>
+                      {selectedTrace.error}
+                    </Alert>
+                  )}
+                </>
+              ) : (
+                <Box sx={{ textAlign: 'center', py: 8 }}>
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
                     Select a trace to view details
                   </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Choose a trace from the list to see its execution timeline
+                  </Typography>
                 </Box>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
+
+      {/* Trace Details Dialog */}
+      <Dialog
+        open={traceDetailsOpen}
+        onClose={() => setTraceDetailsOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Trace Details
+          {selectedTraceDetails && (
+            <Typography variant="subtitle2" color="text.secondary">
+              Trace #{selectedTraceDetails.id.slice(-8)}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {selectedTraceDetails && (
+            <Box>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Status
+                  </Typography>
+                  <Chip
+                    label={selectedTraceDetails.status}
+                    color={getStatusColor(selectedTraceDetails.status)}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Duration
+                  </Typography>
+                  <Typography variant="body1">
+                    {formatDuration(selectedTraceDetails.duration || 0)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Created
+                  </Typography>
+                  <Typography variant="body1">
+                    {new Date(selectedTraceDetails.createdAt).toLocaleString()}
+                  </Typography>
+                </Grid>
+                {selectedTraceDetails.completedAt && (
+                  <Grid item xs={6}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Completed
+                    </Typography>
+                    <Typography variant="body1">
+                      {new Date(selectedTraceDetails.completedAt).toLocaleString()}
+                    </Typography>
+                  </Grid>
+                )}
+              </Grid>
+
+              {selectedTraceDetails.steps && selectedTraceDetails.steps.length > 0 && (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    Execution Steps ({selectedTraceDetails.steps.length})
+                  </Typography>
+                  <List>
+                    {selectedTraceDetails.steps.map((step: AgentStep, index: number) => (
+                      <ListItem key={step.id} sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 1 }}>
+                          <ListItemIcon>
+                            {getStepStatusIcon(step.status)}
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography variant="subtitle1">
+                                  {step.name}
+                                </Typography>
+                                <Chip label={step.type} size="small" variant="outlined" />
+                                {step.duration && (
+                                  <Chip label={formatDuration(step.duration)} size="small" variant="outlined" />
+                                )}
+                              </Box>
+                            }
+                            secondary={step.status}
+                          />
+                        </Box>
+                        {(step.input || step.output || step.error) && (
+                          <Box sx={{ ml: 4, width: '100%' }}>
+                            {step.input && (
+                              <Typography variant="body2" sx={{ mb: 1 }}>
+                                <strong>Input:</strong> {step.input}
+                              </Typography>
+                            )}
+                            {step.output && (
+                              <Typography variant="body2" sx={{ mb: 1 }}>
+                                <strong>Output:</strong> {step.output}
+                              </Typography>
+                            )}
+                            {step.error && (
+                              <Alert severity="error" sx={{ mt: 1 }}>
+                                {step.error}
+                              </Alert>
+                            )}
+                          </Box>
+                        )}
+                        {index < selectedTraceDetails.steps!.length - 1 && <Divider sx={{ mt: 2, width: '100%' }} />}
+                      </ListItem>
+                    ))}
+                  </List>
+                </>
+              )}
+
+              {selectedTraceDetails.error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Trace Error:
+                  </Typography>
+                  {selectedTraceDetails.error}
+                </Alert>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTraceDetailsOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

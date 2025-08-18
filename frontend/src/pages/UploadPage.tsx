@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -15,7 +15,11 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -24,65 +28,94 @@ import {
   Error as ErrorIcon,
   Description as FileIcon,
   Image as ImageIcon,
-  PictureAsPdf as PdfIcon
+  PictureAsPdf as PdfIcon,
+  Visibility as ViewIcon,
+  Download as DownloadIcon
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { toast } from 'react-hot-toast';
+import apiService, { DocumentInfo, UploadResponse } from '../services/apiService';
 
-interface UploadedFile {
+interface UploadedFile extends UploadResponse {
   id: string;
-  name: string;
-  size: number;
-  type: string;
-  status: 'uploading' | 'completed' | 'error';
   progress: number;
-  error?: string;
   uploadedAt: Date;
 }
 
 const UploadPage: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<DocumentInfo | null>(null);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+
+  // Load existing documents on component mount
+  useEffect(() => {
+    loadDocuments();
+  }, []);
+
+  const loadDocuments = async () => {
+    try {
+      setIsLoading(true);
+      const response = await apiService.getDocuments(1, 100);
+      setDocuments(response.data);
+    } catch (error) {
+      console.error('Failed to load documents:', error);
+      toast.error('Failed to load documents');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setIsUploading(true);
     
-    const newFiles: UploadedFile[] = acceptedFiles.map(file => ({
-      id: Math.random().toString(36).substr(2, 9),
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      status: 'uploading',
-      progress: 0,
-      uploadedAt: new Date()
-    }));
-
-    setUploadedFiles(prev => [...prev, ...newFiles]);
-
-    // Simulate upload process for each file
     for (const file of acceptedFiles) {
-      const fileId = newFiles.find(f => f.name === file.name)?.id;
-      if (!fileId) continue;
+      const fileId = Math.random().toString(36).substr(2, 9);
+      
+      const newFile: UploadedFile = {
+        id: fileId,
+        fileId: '',
+        filename: file.name,
+        size: file.size,
+        status: 'uploaded',
+        progress: 0,
+        uploadedAt: new Date()
+      };
+
+      setUploadedFiles(prev => [...prev, newFile]);
 
       try {
-        // Simulate upload progress
-        for (let progress = 0; progress <= 100; progress += 10) {
-          await new Promise(resolve => setTimeout(resolve, 200));
+        const response = await apiService.uploadDocument(file, (progress) => {
           setUploadedFiles(prev => 
             prev.map(f => 
               f.id === fileId 
-                ? { ...f, progress, status: progress === 100 ? 'completed' : 'uploading' }
+                ? { ...f, progress }
                 : f
             )
           );
-        }
+        });
+
+        // Update file with response data
+        setUploadedFiles(prev => 
+          prev.map(f => 
+            f.id === fileId 
+              ? { ...f, ...response, progress: 100 }
+              : f
+          )
+        );
 
         toast.success(`${file.name} uploaded successfully!`);
+        
+        // Reload documents list
+        await loadDocuments();
+        
       } catch (error) {
         setUploadedFiles(prev => 
           prev.map(f => 
             f.id === fileId 
-              ? { ...f, status: 'error', error: 'Upload failed' }
+              ? { ...f, status: 'error', progress: 0 }
               : f
           )
         );
@@ -110,6 +143,26 @@ const UploadPage: React.FC = () => {
     setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
+  const deleteDocument = async (documentId: string) => {
+    try {
+      await apiService.deleteDocument(documentId);
+      toast.success('Document deleted successfully');
+      await loadDocuments();
+    } catch (error) {
+      toast.error('Failed to delete document');
+    }
+  };
+
+  const viewDocument = async (documentId: string) => {
+    try {
+      const document = await apiService.getDocument(documentId);
+      setSelectedDocument(document);
+      setViewDialogOpen(true);
+    } catch (error) {
+      toast.error('Failed to load document details');
+    }
+  };
+
   const getFileIcon = (type: string) => {
     if (type.includes('pdf')) return <PdfIcon />;
     if (type.includes('image')) return <ImageIcon />;
@@ -130,8 +183,19 @@ const UploadPage: React.FC = () => {
         return <CheckIcon color="success" />;
       case 'error':
         return <ErrorIcon color="error" />;
+      case 'processing':
+        return <LinearProgress size={20} />;
       default:
         return null;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'success';
+      case 'processing': return 'primary';
+      case 'error': return 'error';
+      default: return 'default';
     }
   };
 
@@ -140,47 +204,51 @@ const UploadPage: React.FC = () => {
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
         Upload & Pipeline
       </Typography>
-      
+
       <Grid container spacing={3}>
         {/* Upload Area */}
         <Grid item xs={12} md={8}>
-          <Paper
-            {...getRootProps()}
-            sx={{
-              p: 4,
-              textAlign: 'center',
-              border: '2px dashed',
-              borderColor: isDragActive ? 'primary.main' : 'grey.300',
-              backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              '&:hover': {
-                borderColor: 'primary.main',
-                backgroundColor: 'action.hover'
-              }
-            }}
-          >
-            <input {...getInputProps()} />
-            <UploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-            <Typography variant="h6" gutterBottom>
-              {isDragActive ? 'Drop files here' : 'Drag & drop files here'}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              or click to select files
-            </Typography>
-            <Button variant="contained" sx={{ mt: 2 }}>
-              Select Files
-            </Button>
-            <Box sx={{ mt: 2 }}>
-              <Chip label="PDF" size="small" sx={{ mr: 1 }} />
-              <Chip label="DOCX" size="small" sx={{ mr: 1 }} />
-              <Chip label="TXT" size="small" sx={{ mr: 1 }} />
-              <Chip label="Images" size="small" />
-            </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-              Max file size: 50MB
-            </Typography>
-          </Paper>
+          <Card>
+            <CardContent>
+              <Paper
+                {...getRootProps()}
+                sx={{
+                  p: 4,
+                  textAlign: 'center',
+                  border: '2px dashed',
+                  borderColor: isDragActive ? 'primary.main' : 'grey.300',
+                  backgroundColor: isDragActive ? 'action.hover' : 'background.paper',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    borderColor: 'primary.main',
+                    backgroundColor: 'action.hover'
+                  }
+                }}
+              >
+                <input {...getInputProps()} />
+                <UploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  {isDragActive ? 'Drop files here' : 'Drag & drop files here'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  or click to select files
+                </Typography>
+                <Button variant="contained" sx={{ mt: 2 }}>
+                  Select Files
+                </Button>
+                <Box sx={{ mt: 2 }}>
+                  <Chip label="PDF" size="small" sx={{ mr: 1 }} />
+                  <Chip label="DOCX" size="small" sx={{ mr: 1 }} />
+                  <Chip label="TXT" size="small" sx={{ mr: 1 }} />
+                  <Chip label="Images" size="small" />
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                  Max file size: 50MB
+                </Typography>
+              </Paper>
+            </CardContent>
+          </Card>
         </Grid>
 
         {/* Upload Stats */}
@@ -192,13 +260,16 @@ const UploadPage: React.FC = () => {
               </Typography>
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" color="text.secondary">
-                  Total Files: {uploadedFiles.length}
+                  Total Documents: {documents.length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Completed: {uploadedFiles.filter(f => f.status === 'completed').length}
+                  Completed: {documents.filter(d => d.status === 'completed').length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Failed: {uploadedFiles.filter(f => f.status === 'error').length}
+                  Processing: {documents.filter(d => d.status === 'processing').length}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Failed: {documents.filter(d => d.status === 'error').length}
                 </Typography>
               </Box>
               {isUploading && (
@@ -213,39 +284,34 @@ const UploadPage: React.FC = () => {
           </Card>
         </Grid>
 
-        {/* File List */}
+        {/* Recent Uploads */}
         {uploadedFiles.length > 0 && (
           <Grid item xs={12}>
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
-                  Uploaded Files
+                  Recent Uploads
                 </Typography>
                 <List>
                   {uploadedFiles.map((file, index) => (
                     <React.Fragment key={file.id}>
                       <ListItem>
                         <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
-                          {getFileIcon(file.type)}
+                          {getFileIcon(file.filename)}
                         </Box>
                         <ListItemText
-                          primary={file.name}
+                          primary={file.filename}
                           secondary={
                             <Box>
                               <Typography variant="body2" color="text.secondary">
                                 {formatFileSize(file.size)} • {file.uploadedAt.toLocaleTimeString()}
                               </Typography>
-                              {file.status === 'uploading' && (
+                              {file.status === 'uploaded' && file.progress < 100 && (
                                 <LinearProgress 
                                   variant="determinate" 
                                   value={file.progress} 
                                   sx={{ mt: 1, width: 200 }}
                                 />
-                              )}
-                              {file.error && (
-                                <Alert severity="error" sx={{ mt: 1, width: 'fit-content' }}>
-                                  {file.error}
-                                </Alert>
                               )}
                             </Box>
                           }
@@ -256,7 +322,7 @@ const UploadPage: React.FC = () => {
                             <IconButton 
                               edge="end" 
                               onClick={() => removeFile(file.id)}
-                              disabled={file.status === 'uploading'}
+                              disabled={file.status === 'uploaded' && file.progress < 100}
                             >
                               <DeleteIcon />
                             </IconButton>
@@ -271,7 +337,208 @@ const UploadPage: React.FC = () => {
             </Card>
           </Grid>
         )}
+
+        {/* Document Library */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  Document Library
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={loadDocuments}
+                  disabled={isLoading}
+                >
+                  Refresh
+                </Button>
+              </Box>
+              
+              {isLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <LinearProgress sx={{ width: '100%' }} />
+                </Box>
+              ) : documents.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No documents uploaded yet
+                  </Typography>
+                </Box>
+              ) : (
+                <List>
+                  {documents.map((doc, index) => (
+                    <React.Fragment key={doc.id}>
+                      <ListItem>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
+                          {getFileIcon(doc.filename)}
+                        </Box>
+                        <ListItemText
+                          primary={doc.filename}
+                          secondary={
+                            <Box>
+                              <Typography variant="body2" color="text.secondary">
+                                {formatFileSize(doc.size)} • {new Date(doc.uploadedAt).toLocaleString()}
+                              </Typography>
+                              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                                <Chip
+                                  label={doc.status}
+                                  color={getStatusColor(doc.status)}
+                                  size="small"
+                                />
+                                {doc.confidence && (
+                                  <Chip
+                                    label={`${(doc.confidence * 100).toFixed(1)}% Confidence`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                )}
+                              </Box>
+                            </Box>
+                          }
+                        />
+                        <ListItemSecondaryAction>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <IconButton
+                              size="small"
+                              onClick={() => viewDocument(doc.id)}
+                              title="View Details"
+                            >
+                              <ViewIcon />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={() => deleteDocument(doc.id)}
+                              title="Delete Document"
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Box>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                      {index < documents.length - 1 && <Divider />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
+
+      {/* Document Details Dialog */}
+      <Dialog
+        open={viewDialogOpen}
+        onClose={() => setViewDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Document Details
+          {selectedDocument && (
+            <Typography variant="subtitle2" color="text.secondary">
+              {selectedDocument.filename}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {selectedDocument && (
+            <Box>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Basic Information
+                  </Typography>
+                  <List dense>
+                    <ListItem>
+                      <ListItemText
+                        primary="File Size"
+                        secondary={formatFileSize(selectedDocument.size)}
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemText
+                        primary="File Type"
+                        secondary={selectedDocument.type}
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemText
+                        primary="Upload Date"
+                        secondary={new Date(selectedDocument.uploadedAt).toLocaleString()}
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemText
+                        primary="Status"
+                        secondary={
+                          <Chip
+                            label={selectedDocument.status}
+                            color={getStatusColor(selectedDocument.status)}
+                            size="small"
+                          />
+                        }
+                      />
+                    </ListItem>
+                  </List>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Processing Results
+                  </Typography>
+                  {selectedDocument.confidence && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body2" gutterBottom>
+                        Confidence Score: {(selectedDocument.confidence * 100).toFixed(1)}%
+                      </Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={selectedDocument.confidence * 100}
+                        sx={{ height: 8, borderRadius: 4 }}
+                      />
+                    </Box>
+                  )}
+                  {selectedDocument.entities && selectedDocument.entities.length > 0 && (
+                    <Box>
+                      <Typography variant="body2" gutterBottom>
+                        Extracted Entities:
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {selectedDocument.entities.slice(0, 5).map((entity: any, index: number) => (
+                          <Chip
+                            key={index}
+                            label={`${entity.type}: ${entity.value}`}
+                            size="small"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                </Grid>
+                {selectedDocument.extractedText && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Extracted Text (Preview)
+                    </Typography>
+                    <Paper sx={{ p: 2, bgcolor: 'grey.50', maxHeight: 200, overflow: 'auto' }}>
+                      <Typography variant="body2">
+                        {selectedDocument.extractedText.substring(0, 500)}
+                        {selectedDocument.extractedText.length > 500 && '...'}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                )}
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewDialogOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
