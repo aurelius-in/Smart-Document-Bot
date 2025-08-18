@@ -276,6 +276,21 @@ class AgentService:
                 "name": "AuditAgent",
                 "description": "Generates audit trails and compliance reports",
                 "capabilities": ["Audit trail generation", "Compliance reporting", "Audit bundle creation"]
+            },
+            "summarizer": {
+                "name": "SummarizerAgent",
+                "description": "Generates comprehensive document summaries",
+                "capabilities": ["Extractive summarization", "Abstractive summarization", "Executive summaries", "Technical summaries", "Key points extraction"]
+            },
+            "translator": {
+                "name": "TranslatorAgent",
+                "description": "Translates documents between multiple languages",
+                "capabilities": ["Text translation", "Document translation", "Language detection", "Technical translation", "Cultural adaptation"]
+            },
+            "sentiment": {
+                "name": "SentimentAnalysisAgent",
+                "description": "Analyzes sentiment, tone, and emotional content",
+                "capabilities": ["Sentiment analysis", "Tone analysis", "Emotion detection", "Bias detection", "Sentiment tracking"]
             }
         }
     
