@@ -1,403 +1,590 @@
 import json
 import re
 from typing import Any, Dict, List, Optional
+from datetime import datetime
+from enum import Enum
 
 from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage
+from langchain.schema import HumanMessage, SystemMessage
 
 from .base import BaseAgent, Tool
-from ..models.base import AgentResult, AgentType, RiskFinding, SeverityLevel
+from ..models.base import AgentResult, AgentType, Document
 
 
-class OPAPolicyTool(Tool):
-    """Open Policy Agent (OPA) integration tool"""
+class RiskLevel(Enum):
+    """Risk level enumeration"""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class RiskCategory(Enum):
+    """Risk category enumeration"""
+    COMPLIANCE = "compliance"
+    FINANCIAL = "financial"
+    OPERATIONAL = "operational"
+    LEGAL = "legal"
+    REPUTATIONAL = "reputational"
+    TECHNICAL = "technical"
+
+
+class ComplianceRiskAnalysisTool(Tool):
+    """Tool for analyzing compliance risks"""
     
     def __init__(self):
-        super().__init__("opa_evaluate", "Evaluate policies using OPA")
+        super().__init__("analyze_compliance", "Analyze compliance risks in documents")
     
-    async def execute(self, policy_name: str, input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Evaluate OPA policy"""
+    async def execute(self, content: str, doc_type: str, entities: List[Dict], **kwargs) -> Dict[str, Any]:
+        """Analyze compliance risks"""
         try:
-            # In a real implementation, this would call OPA server
-            # For demo purposes, we'll simulate OPA evaluation
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
             
-            # Load policy rules
-            policy_rules = self._load_policy_rules(policy_name)
+            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
             
-            # Apply rules to input data
-            violations = []
-            for rule in policy_rules:
-                if self._evaluate_rule(rule, input_data):
-                    violations.append({
-                        "rule_id": rule["id"],
-                        "description": rule["description"],
-                        "severity": rule["severity"],
-                        "policy_reference": rule["policy_ref"]
-                    })
+            # Get compliance frameworks based on document type
+            frameworks = self._get_compliance_frameworks(doc_type)
             
-            return {
-                "violations": violations,
-                "total_rules_evaluated": len(policy_rules),
-                "violation_count": len(violations)
-            }
+            system_prompt = f"""You are an expert compliance risk analyst. Analyze this {doc_type} document for compliance risks.
+            
+            COMPLIANCE FRAMEWORKS TO CHECK: {', '.join(frameworks)}
+            
+            For each compliance risk found, provide:
+            - risk_type: Type of compliance risk
+            - description: Detailed description of the risk
+            - severity: LOW/MEDIUM/HIGH/CRITICAL
+            - regulation: Specific regulation or standard violated
+            - impact: Potential impact of non-compliance
+            - recommendation: How to address the risk
+            - confidence: Confidence score (0.0-1.0)
+            
+            Respond with JSON:
+            {{
+                "compliance_risks": [
+                    {{
+                        "risk_type": "risk_category",
+                        "description": "detailed description",
+                        "severity": "HIGH",
+                        "regulation": "specific regulation",
+                        "impact": "potential impact",
+                        "recommendation": "how to address",
+                        "confidence": 0.95
+                    }}
+                ],
+                "overall_compliance_score": 0.85,
+                "summary": "Overall compliance assessment"
+            }}
+            """
+            
+            # Include extracted entities for context
+            entity_context = ""
+            if entities:
+                entity_context = f"\n\nEXTRACTED ENTITIES:\n{json.dumps(entities[:10], indent=2)}"
+            
+            user_prompt = f"Analyze compliance risks in this {doc_type} document:{entity_context}\n\n{content[:3000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            return json.loads(result_text)
             
         except Exception as e:
             return {
-                "violations": [],
-                "error": str(e),
-                "total_rules_evaluated": 0,
-                "violation_count": 0
+                "compliance_risks": [],
+                "overall_compliance_score": 0.0,
+                "summary": f"Compliance analysis failed: {str(e)}"
             }
     
-    def _load_policy_rules(self, policy_name: str) -> List[Dict[str, Any]]:
-        """Load policy rules based on policy name"""
-        # Demo policy rules - in production, these would be loaded from .rego files
-        policies = {
-            "hipaa": [
-                {
-                    "id": "hipaa_001",
-                    "description": "PHI disclosure without authorization",
-                    "severity": "critical",
-                    "policy_ref": "HIPAA §164.502(a)",
-                    "pattern": r"\b(patient|medical|health|diagnosis|treatment)\b.*\b(share|disclose|release|publish)\b"
-                },
-                {
-                    "id": "hipaa_002", 
-                    "description": "Missing privacy notice",
-                    "severity": "high",
-                    "policy_ref": "HIPAA §164.520",
-                    "pattern": r"\bprivacy\s+notice\b"
-                }
-            ],
-            "sec": [
-                {
-                    "id": "sec_001",
-                    "description": "Material information omission",
-                    "severity": "critical", 
-                    "policy_ref": "SEC Rule 10b-5",
-                    "pattern": r"\b(material|significant|important)\b.*\b(omitted|withheld|concealed)\b"
-                },
-                {
-                    "id": "sec_002",
-                    "description": "Insider trading indicators",
-                    "severity": "high",
-                    "policy_ref": "SEC Rule 10b5-1",
-                    "pattern": r"\b(insider|non-public|confidential)\b.*\b(trade|sell|buy)\b"
-                }
-            ],
-            "generic": [
-                {
-                    "id": "gen_001",
-                    "description": "Unclear liability terms",
-                    "severity": "medium",
-                    "policy_ref": "Contract Law §2-314",
-                    "pattern": r"\b(liability|responsibility)\b.*\b(unlimited|unclear|vague)\b"
-                },
-                {
-                    "id": "gen_002",
-                    "description": "Missing termination clause",
-                    "severity": "medium",
-                    "policy_ref": "Contract Law §2-309",
-                    "pattern": r"\b(terminate|end|cancel)\b"
-                }
-            ]
+    def _get_compliance_frameworks(self, doc_type: str) -> List[str]:
+        """Get compliance frameworks based on document type"""
+        base_frameworks = ["General Business Standards", "Data Protection"]
+        
+        framework_mapping = {
+            "contract": base_frameworks + ["Contract Law", "Industry Standards", "Data Privacy"],
+            "invoice": base_frameworks + ["Tax Compliance", "Financial Reporting", "Vendor Management"],
+            "policy": base_frameworks + ["Insurance Regulations", "Industry Standards", "Consumer Protection"],
+            "regulation": base_frameworks + ["Regulatory Compliance", "Industry Standards", "Enforcement Requirements"],
+            "financial_statement": base_frameworks + ["GAAP", "IFRS", "SEC Requirements", "Audit Standards"],
+            "medical_record": base_frameworks + ["HIPAA", "Medical Privacy", "Clinical Standards", "Data Security"]
         }
         
-        return policies.get(policy_name, policies["generic"])
+        return framework_mapping.get(doc_type, base_frameworks)
+
+
+class FinancialRiskAnalysisTool(Tool):
+    """Tool for analyzing financial risks"""
     
-    def _evaluate_rule(self, rule: Dict[str, Any], input_data: Dict[str, Any]) -> bool:
-        """Evaluate if a rule is violated"""
-        text = input_data.get("text", "").lower()
-        pattern = rule.get("pattern", "")
+    def __init__(self):
+        super().__init__("analyze_financial", "Analyze financial risks in documents")
+    
+    async def execute(self, content: str, doc_type: str, entities: List[Dict], **kwargs) -> Dict[str, Any]:
+        """Analyze financial risks"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
+            
+            risk_types = self._get_financial_risk_types(doc_type)
+            
+            system_prompt = f"""You are an expert financial risk analyst. Analyze this {doc_type} document for financial risks.
+            
+            FINANCIAL RISK TYPES TO CHECK: {', '.join(risk_types)}
+            
+            For each financial risk found, provide:
+            - risk_type: Type of financial risk
+            - description: Detailed description of the risk
+            - severity: LOW/MEDIUM/HIGH/CRITICAL
+            - potential_loss: Estimated potential financial loss
+            - probability: Likelihood of risk occurring (0.0-1.0)
+            - mitigation: How to mitigate the risk
+            - confidence: Confidence score (0.0-1.0)
+            
+            Respond with JSON:
+            {{
+                "financial_risks": [
+                    {{
+                        "risk_type": "risk_category",
+                        "description": "detailed description",
+                        "severity": "HIGH",
+                        "potential_loss": "estimated loss amount",
+                        "probability": 0.75,
+                        "mitigation": "how to mitigate",
+                        "confidence": 0.95
+                    }}
+                ],
+                "total_potential_loss": "total estimated loss",
+                "risk_score": 0.65,
+                "summary": "Overall financial risk assessment"
+            }}
+            """
+            
+            # Include extracted entities for context
+            entity_context = ""
+            if entities:
+                entity_context = f"\n\nEXTRACTED ENTITIES:\n{json.dumps(entities[:10], indent=2)}"
+            
+            user_prompt = f"Analyze financial risks in this {doc_type} document:{entity_context}\n\n{content[:3000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            return json.loads(result_text)
+            
+        except Exception as e:
+            return {
+                "financial_risks": [],
+                "total_potential_loss": "$0",
+                "risk_score": 0.0,
+                "summary": f"Financial analysis failed: {str(e)}"
+            }
+    
+    def _get_financial_risk_types(self, doc_type: str) -> List[str]:
+        """Get financial risk types based on document type"""
+        base_types = ["Credit Risk", "Market Risk", "Operational Risk"]
         
-        if pattern:
-            return bool(re.search(pattern, text, re.IGNORECASE))
+        type_mapping = {
+            "contract": base_types + ["Contractual Risk", "Payment Risk", "Liability Risk"],
+            "invoice": base_types + ["Payment Default", "Tax Risk", "Billing Risk"],
+            "policy": base_types + ["Claims Risk", "Premium Risk", "Coverage Risk"],
+            "financial_statement": base_types + ["Reporting Risk", "Audit Risk", "Disclosure Risk"],
+            "investment": base_types + ["Investment Risk", "Portfolio Risk", "Volatility Risk"]
+        }
         
-        return False
+        return type_mapping.get(doc_type, base_types)
+
+
+class OperationalRiskAnalysisTool(Tool):
+    """Tool for analyzing operational risks"""
+    
+    def __init__(self):
+        super().__init__("analyze_operational", "Analyze operational risks in documents")
+    
+    async def execute(self, content: str, doc_type: str, entities: List[Dict], **kwargs) -> Dict[str, Any]:
+        """Analyze operational risks"""
+        try:
+            from langchain.chat_models import ChatOpenAI
+            from langchain.schema import HumanMessage, SystemMessage
+            
+            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
+            
+            risk_types = self._get_operational_risk_types(doc_type)
+            
+            system_prompt = f"""You are an expert operational risk analyst. Analyze this {doc_type} document for operational risks.
+            
+            OPERATIONAL RISK TYPES TO CHECK: {', '.join(risk_types)}
+            
+            For each operational risk found, provide:
+            - risk_type: Type of operational risk
+            - description: Detailed description of the risk
+            - severity: LOW/MEDIUM/HIGH/CRITICAL
+            - business_impact: Impact on business operations
+            - likelihood: Likelihood of occurrence (0.0-1.0)
+            - controls: Existing or recommended controls
+            - confidence: Confidence score (0.0-1.0)
+            
+            Respond with JSON:
+            {{
+                "operational_risks": [
+                    {{
+                        "risk_type": "risk_category",
+                        "description": "detailed description",
+                        "severity": "HIGH",
+                        "business_impact": "impact description",
+                        "likelihood": 0.75,
+                        "controls": "existing/recommended controls",
+                        "confidence": 0.95
+                    }}
+                ],
+                "operational_risk_score": 0.65,
+                "summary": "Overall operational risk assessment"
+            }}
+            """
+            
+            # Include extracted entities for context
+            entity_context = ""
+            if entities:
+                entity_context = f"\n\nEXTRACTED ENTITIES:\n{json.dumps(entities[:10], indent=2)}"
+            
+            user_prompt = f"Analyze operational risks in this {doc_type} document:{entity_context}\n\n{content[:3000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
+            result_text = response.generations[0][0].text.strip()
+            
+            # Extract JSON from response
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1]
+            
+            return json.loads(result_text)
+            
+        except Exception as e:
+            return {
+                "operational_risks": [],
+                "operational_risk_score": 0.0,
+                "summary": f"Operational analysis failed: {str(e)}"
+            }
+    
+    def _get_operational_risk_types(self, doc_type: str) -> List[str]:
+        """Get operational risk types based on document type"""
+        base_types = ["Process Risk", "Technology Risk", "Human Risk"]
+        
+        type_mapping = {
+            "contract": base_types + ["Vendor Risk", "Service Delivery Risk", "Contract Management Risk"],
+            "policy": base_types + ["Claims Processing Risk", "Underwriting Risk", "Customer Service Risk"],
+            "regulation": base_types + ["Compliance Monitoring Risk", "Reporting Risk", "Enforcement Risk"],
+            "financial_statement": base_types + ["Financial Reporting Risk", "Audit Risk", "Data Quality Risk"],
+            "medical_record": base_types + ["Patient Safety Risk", "Data Security Risk", "Clinical Process Risk"]
+        }
+        
+        return type_mapping.get(doc_type, base_types)
 
 
 class RiskScoringTool(Tool):
-    """Risk scoring and severity assessment tool"""
+    """Tool for calculating overall risk scores"""
     
     def __init__(self):
-        super().__init__("risk_score", "Score risks and assess severity")
+        super().__init__("calculate_risk_score", "Calculate overall risk scores")
     
-    async def execute(self, violations: List[Dict[str, Any]], context: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Score risks based on violations and context"""
+    async def execute(self, compliance_risks: List[Dict], financial_risks: List[Dict], operational_risks: List[Dict], **kwargs) -> Dict[str, Any]:
+        """Calculate overall risk scores"""
         try:
-            from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
+            # Calculate risk scores by category
+            compliance_score = self._calculate_category_score(compliance_risks)
+            financial_score = self._calculate_category_score(financial_risks)
+            operational_score = self._calculate_category_score(operational_risks)
             
-            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
+            # Calculate weighted overall score
+            weights = {
+                "compliance": 0.4,
+                "financial": 0.35,
+                "operational": 0.25
+            }
             
-            prompt = f"""
-Analyze these policy violations and assess overall risk. Respond with JSON only.
-
-VIOLATIONS:
-{json.dumps(violations, indent=2)}
-
-CONTEXT:
-- Document type: {context.get('doc_type', 'unknown')}
-- Domain: {context.get('domain', 'unknown')}
-- Entity count: {context.get('entity_count', 0)}
-
-TASK:
-1. Assess overall risk level (low/medium/high/critical)
-2. Calculate risk score (0.0-1.0)
-3. Identify top 3 risk factors
-4. Suggest mitigations
-
-Respond with JSON:
-{{
-    "overall_risk": "risk_level",
-    "risk_score": 0.75,
-    "top_risk_factors": ["factor1", "factor2", "factor3"],
-    "suggested_mitigations": ["mitigation1", "mitigation2"],
-    "confidence": 0.85
-}}
-"""
+            overall_score = (
+                compliance_score * weights["compliance"] +
+                financial_score * weights["financial"] +
+                operational_score * weights["operational"]
+            )
             
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
-            result_text = response.generations[0][0].text.strip()
+            # Determine overall risk level
+            risk_level = self._determine_risk_level(overall_score)
             
-            # Extract JSON
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0]
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1]
+            # Get top risks
+            all_risks = []
+            for risk in compliance_risks:
+                risk["category"] = "compliance"
+                all_risks.append(risk)
+            for risk in financial_risks:
+                risk["category"] = "financial"
+                all_risks.append(risk)
+            for risk in operational_risks:
+                risk["category"] = "operational"
+                all_risks.append(risk)
             
-            return json.loads(result_text)
+            # Sort by severity and confidence
+            all_risks.sort(key=lambda x: (
+                self._severity_to_numeric(x.get("severity", "LOW")),
+                x.get("confidence", 0)
+            ), reverse=True)
+            
+            return {
+                "overall_risk_score": overall_score,
+                "risk_level": risk_level,
+                "category_scores": {
+                    "compliance": compliance_score,
+                    "financial": financial_score,
+                    "operational": operational_score
+                },
+                "top_risks": all_risks[:5],
+                "risk_summary": {
+                    "total_risks": len(all_risks),
+                    "high_critical_risks": len([r for r in all_risks if r.get("severity") in ["HIGH", "CRITICAL"]]),
+                    "recommendations": self._generate_recommendations(all_risks)
+                }
+            }
             
         except Exception as e:
             return {
-                "overall_risk": "medium",
-                "risk_score": 0.5,
-                "top_risk_factors": ["Unknown"],
-                "suggested_mitigations": ["Manual review required"],
-                "confidence": 0.0,
-                "error": str(e)
+                "overall_risk_score": 0.0,
+                "risk_level": "UNKNOWN",
+                "category_scores": {},
+                "top_risks": [],
+                "risk_summary": {
+                    "total_risks": 0,
+                    "high_critical_risks": 0,
+                    "recommendations": [f"Risk scoring failed: {str(e)}"]
+                }
             }
-
-
-class MitigationSuggestionTool(Tool):
-    """Generate risk mitigation suggestions"""
     
-    def __init__(self):
-        super().__init__("suggest_mitigation", "Suggest risk mitigation strategies")
+    def _calculate_category_score(self, risks: List[Dict]) -> float:
+        """Calculate risk score for a category"""
+        if not risks:
+            return 0.0
+        
+        severity_weights = {
+            "LOW": 0.25,
+            "MEDIUM": 0.5,
+            "HIGH": 0.75,
+            "CRITICAL": 1.0
+        }
+        
+        total_score = 0.0
+        total_weight = 0.0
+        
+        for risk in risks:
+            severity = risk.get("severity", "LOW")
+            confidence = risk.get("confidence", 0.5)
+            weight = severity_weights.get(severity, 0.25)
+            
+            total_score += weight * confidence
+            total_weight += weight
+        
+        return total_score / total_weight if total_weight > 0 else 0.0
     
-    async def execute(self, violation: Dict[str, Any], context: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Generate mitigation suggestions for a violation"""
-        try:
-            from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
-            
-            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
-            
-            prompt = f"""
-Generate specific mitigation suggestions for this policy violation. Respond with JSON only.
-
-VIOLATION:
-- Rule: {violation.get('description', 'Unknown')}
-- Severity: {violation.get('severity', 'medium')}
-- Policy Reference: {violation.get('policy_reference', 'Unknown')}
-
-CONTEXT:
-- Document type: {context.get('doc_type', 'unknown')}
-- Domain: {context.get('domain', 'unknown')}
-
-TASK:
-Provide specific, actionable mitigation strategies.
-
-Respond with JSON:
-{{
-    "mitigation_strategies": [
-        {{
-            "strategy": "strategy description",
-            "priority": "high/medium/low",
-            "effort": "low/medium/high",
-            "effectiveness": 0.85
-        }}
-    ],
-    "compliance_actions": ["action1", "action2"],
-    "timeline": "immediate/short-term/long-term"
-}}
-"""
-            
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
-            result_text = response.generations[0][0].text.strip()
-            
-            # Extract JSON
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0]
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1]
-            
-            return json.loads(result_text)
-            
-        except Exception as e:
-            return {
-                "mitigation_strategies": [],
-                "compliance_actions": ["Manual review required"],
-                "timeline": "immediate",
-                "error": str(e)
-            }
+    def _determine_risk_level(self, score: float) -> str:
+        """Determine risk level based on score"""
+        if score >= 0.8:
+            return "CRITICAL"
+        elif score >= 0.6:
+            return "HIGH"
+        elif score >= 0.4:
+            return "MEDIUM"
+        else:
+            return "LOW"
+    
+    def _severity_to_numeric(self, severity: str) -> int:
+        """Convert severity to numeric for sorting"""
+        severity_map = {
+            "CRITICAL": 4,
+            "HIGH": 3,
+            "MEDIUM": 2,
+            "LOW": 1
+        }
+        return severity_map.get(severity.upper(), 1)
+    
+    def _generate_recommendations(self, risks: List[Dict]) -> List[str]:
+        """Generate recommendations based on risks"""
+        recommendations = []
+        
+        high_critical_risks = [r for r in risks if r.get("severity") in ["HIGH", "CRITICAL"]]
+        
+        if len(high_critical_risks) > 5:
+            recommendations.append("Immediate action required: Document has 5+ high/critical risks")
+        
+        compliance_risks = [r for r in high_critical_risks if r.get("category") == "compliance"]
+        if compliance_risks:
+            recommendations.append("Legal review recommended for compliance risks")
+        
+        financial_risks = [r for r in high_critical_risks if r.get("category") == "financial"]
+        if financial_risks:
+            recommendations.append("Financial review recommended for monetary risks")
+        
+        if not recommendations:
+            recommendations.append("Document appears to have acceptable risk levels")
+        
+        return recommendations
 
 
 class RiskAgent(BaseAgent):
-    """Agent responsible for risk assessment and compliance evaluation"""
+    """Agent responsible for risk assessment and analysis"""
     
     def __init__(self, llm_model: str = "gpt-4"):
         super().__init__("RiskAgent", AgentType.RISK)
         self.llm = ChatOpenAI(model=llm_model, temperature=0.1)
         
         # Add tools
-        self.add_tool(OPAPolicyTool())
+        self.add_tool(ComplianceRiskAnalysisTool())
+        self.add_tool(FinancialRiskAnalysisTool())
+        self.add_tool(OperationalRiskAnalysisTool())
         self.add_tool(RiskScoringTool())
-        self.add_tool(MitigationSuggestionTool())
     
     async def run(self, goal: str, context: Dict[str, Any]) -> AgentResult:
         """Main risk assessment process"""
-        document = context.get("entity_result")
-        if not document or not hasattr(document, 'content'):
+        document = context.get("document")
+        if not document:
             return AgentResult(
                 output=None,
-                rationale="No document content available from entity extraction",
+                rationale="No document provided in context",
                 confidence=0.0,
-                next_suggested_action="Ensure entities are extracted first"
+                next_suggested_action="Provide document in context"
             )
         
         try:
-            # Determine applicable policies
-            doc_type = context.get("doc_type", "unknown")
-            domain = context.get("domain", "other")
+            doc_type = document.doc_type.value if document.doc_type else "unknown"
+            entities = document.metadata.get("entities", [])
             
-            policies = self._get_applicable_policies(doc_type, domain)
-            
-            # Evaluate each policy
-            all_violations = []
-            policy_results = {}
-            
-            for policy in policies:
-                opa_tool = self.get_tool("opa_evaluate")
-                input_data = {
-                    "text": document.content,
-                    "doc_type": doc_type,
-                    "domain": domain,
-                    "entities": context.get("entities", [])
-                }
-                
-                result = await opa_tool.execute(policy_name=policy, input_data=input_data)
-                policy_results[policy] = result
-                
-                # Add policy name to violations
-                for violation in result.get("violations", []):
-                    violation["policy_name"] = policy
-                    all_violations.append(violation)
-            
-            # Score overall risk
-            risk_tool = self.get_tool("risk_score")
-            risk_assessment = await risk_tool.execute(
-                violations=all_violations,
-                context={
-                    "doc_type": doc_type,
-                    "domain": domain,
-                    "entity_count": len(context.get("entities", []))
-                }
+            # Analyze compliance risks
+            compliance_tool = self.get_tool("analyze_compliance")
+            compliance_analysis = await compliance_tool.execute(
+                content=document.content,
+                doc_type=doc_type,
+                entities=entities
             )
             
-            # Generate risk findings
-            findings = []
-            for violation in all_violations:
-                # Generate mitigation suggestions
-                mitigation_tool = self.get_tool("suggest_mitigation")
-                mitigation = await mitigation_tool.execute(
-                    violation=violation,
-                    context={"doc_type": doc_type, "domain": domain}
-                )
-                
-                finding = RiskFinding(
-                    severity=SeverityLevel(violation.get("severity", "medium")),
-                    category=violation.get("policy_name", "unknown"),
-                    description=violation.get("description", "Unknown violation"),
-                    policy_reference=violation.get("policy_reference", "Unknown"),
-                    location={"policy": violation.get("policy_name")},
-                    confidence=0.8,  # Based on OPA evaluation
-                    suggested_mitigation="; ".join(mitigation.get("compliance_actions", []))
-                )
-                findings.append(finding)
+            # Analyze financial risks
+            financial_tool = self.get_tool("analyze_financial")
+            financial_analysis = await financial_tool.execute(
+                content=document.content,
+                doc_type=doc_type,
+                entities=entities
+            )
             
-            # Calculate overall confidence
-            total_violations = len(all_violations)
-            if total_violations == 0:
-                overall_confidence = 0.9  # High confidence in no violations
-            else:
-                # Average confidence across findings
-                overall_confidence = sum(f.confidence for f in findings) / len(findings)
+            # Analyze operational risks
+            operational_tool = self.get_tool("analyze_operational")
+            operational_analysis = await operational_tool.execute(
+                content=document.content,
+                doc_type=doc_type,
+                entities=entities
+            )
+            
+            # Calculate overall risk scores
+            scoring_tool = self.get_tool("calculate_risk_score")
+            risk_scores = await scoring_tool.execute(
+                compliance_risks=compliance_analysis.get("compliance_risks", []),
+                financial_risks=financial_analysis.get("financial_risks", []),
+                operational_risks=operational_analysis.get("operational_risks", [])
+            )
+            
+            # Update document metadata
+            document.metadata.update({
+                "risk_assessment": {
+                    "compliance": compliance_analysis,
+                    "financial": financial_analysis,
+                    "operational": operational_analysis,
+                    "overall": risk_scores,
+                    "assessed_at": datetime.utcnow().isoformat()
+                }
+            })
+            
+            # Calculate confidence
+            confidence = self._calculate_confidence(
+                compliance_analysis,
+                financial_analysis,
+                operational_analysis
+            )
             
             # Generate rationale
-            rationale = f"Evaluated {len(policies)} policies. Found {total_violations} violations. Overall risk: {risk_assessment.get('overall_risk', 'unknown')}"
+            total_risks = risk_scores.get("risk_summary", {}).get("total_risks", 0)
+            high_critical = risk_scores.get("risk_summary", {}).get("high_critical_risks", 0)
+            risk_level = risk_scores.get("risk_level", "UNKNOWN")
+            
+            rationale = f"Risk assessment completed: {total_risks} total risks identified, {high_critical} high/critical risks. Overall risk level: {risk_level}"
             
             return AgentResult(
-                output={
-                    "findings": findings,
-                    "risk_assessment": risk_assessment,
-                    "policy_results": policy_results,
-                    "total_violations": total_violations
-                },
+                output=document,
                 rationale=rationale,
-                confidence=overall_confidence,
-                next_suggested_action="Proceed to audit trail generation" if total_violations == 0 else "Review violations and implement mitigations"
+                confidence=confidence,
+                next_suggested_action="Proceed to QA generation",
+                metadata={
+                    "compliance_analysis": compliance_analysis,
+                    "financial_analysis": financial_analysis,
+                    "operational_analysis": operational_analysis,
+                    "risk_scores": risk_scores
+                }
             )
             
         except Exception as e:
             return AgentResult(
-                output={"findings": [], "risk_assessment": {}, "policy_results": {}, "total_violations": 0},
+                output=None,
                 rationale=f"Risk assessment failed: {str(e)}",
                 confidence=0.0,
                 next_suggested_action="Manual risk assessment required"
             )
     
-    def _get_applicable_policies(self, doc_type: str, domain: str) -> List[str]:
-        """Get list of applicable policies based on document type and domain"""
-        policies = ["generic"]  # Always include generic policies
+    def _calculate_confidence(self, compliance_analysis: Dict, financial_analysis: Dict, operational_analysis: Dict) -> float:
+        """Calculate confidence based on analysis results"""
+        confidence = 0.5  # Base confidence
         
-        # Add domain-specific policies
-        if domain == "healthcare":
-            policies.append("hipaa")
-        elif domain == "finance":
-            policies.append("sec")
+        # Compliance confidence
+        compliance_score = compliance_analysis.get("overall_compliance_score", 0.0)
+        confidence += compliance_score * 0.2
         
-        # Add document-type specific policies
-        if doc_type in ["contract", "legal_document"]:
-            policies.append("contract_law")
+        # Financial confidence
+        financial_score = financial_analysis.get("risk_score", 0.0)
+        confidence += (1.0 - financial_score) * 0.2  # Lower risk = higher confidence
         
-        return policies
-    
-    def get_risk_summary(self, findings: List[RiskFinding]) -> Dict[str, Any]:
-        """Get summary of risk findings"""
-        if not findings:
-            return {"total": 0, "by_severity": {}, "by_category": {}}
+        # Operational confidence
+        operational_score = operational_analysis.get("operational_risk_score", 0.0)
+        confidence += (1.0 - operational_score) * 0.2  # Lower risk = higher confidence
         
-        by_severity = {}
-        by_category = {}
+        # Analysis completeness
+        total_risks = (
+            len(compliance_analysis.get("compliance_risks", [])) +
+            len(financial_analysis.get("financial_risks", [])) +
+            len(operational_analysis.get("operational_risks", []))
+        )
         
-        for finding in findings:
-            # Count by severity
-            severity = finding.severity.value
-            if severity not in by_severity:
-                by_severity[severity] = 0
-            by_severity[severity] += 1
-            
-            # Count by category
-            category = finding.category
-            if category not in by_category:
-                by_category[category] = 0
-            by_category[category] += 1
+        if total_risks > 0:
+            confidence += 0.1
         
-        return {
-            "total": len(findings),
-            "by_severity": by_severity,
-            "by_category": by_category,
-            "critical_count": by_severity.get("critical", 0),
-            "high_count": by_severity.get("high", 0)
-        }
+        return min(1.0, max(0.0, confidence))

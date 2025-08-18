@@ -1,147 +1,177 @@
-import re
+import json
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage
+from langchain.schema import HumanMessage, SystemMessage
 
 from .base import BaseAgent, Tool
-from ..models.base import AgentResult, AgentType, DocumentType
+from ..models.base import AgentResult, AgentType, Document, DocumentType
 
 
 class DocumentClassificationTool(Tool):
-    """LLM-based document classification tool"""
+    """Tool for classifying documents using LLM"""
     
     def __init__(self):
         super().__init__("classify", "Classify document type and domain using LLM")
     
-    async def execute(self, text: str, **kwargs) -> Dict[str, Any]:
-        """Classify document"""
+    async def execute(self, content: str, **kwargs) -> Dict[str, Any]:
+        """Classify document content"""
         try:
             from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
+            from langchain.schema import HumanMessage, SystemMessage
             
             llm = ChatOpenAI(model="gpt-4", temperature=0.1)
             
-            prompt = f"""
-Analyze this document text and classify it. Respond with JSON only.
-
-DOCUMENT TEXT (first 1000 characters):
-{text[:1000]}...
-
-CLASSIFICATION TASK:
-1. Determine document type from: contract, invoice, policy, regulation, compliance_report, legal_document, financial_statement, insurance_policy, medical_record, unknown
-2. Identify domain: healthcare, finance, legal, insurance, government, technology, manufacturing, retail, other
-3. Identify missing critical fields (list as array)
-4. Provide confidence score (0.0-1.0)
-
-Respond with JSON:
-{{
-    "document_type": "type",
-    "domain": "domain", 
-    "missing_fields": ["field1", "field2"],
-    "confidence": 0.85,
-    "reasoning": "brief explanation"
-}}
-"""
+            system_prompt = """You are an expert document classifier for regulatory and business documents. 
+            Analyze the document content and classify it into one of the following types:
             
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
+            - contract: Legal agreements, contracts, terms of service
+            - invoice: Bills, invoices, payment requests
+            - policy: Company policies, procedures, guidelines
+            - regulation: Government regulations, compliance documents
+            - compliance_report: Audit reports, compliance assessments
+            - legal_document: Legal filings, court documents, legal correspondence
+            - financial_statement: Financial reports, balance sheets, income statements
+            - insurance_policy: Insurance documents, coverage details
+            - medical_record: Medical documents, health records
+            - unknown: Cannot determine type
+            
+            Also identify the domain (e.g., legal, financial, healthcare, technology, etc.)
+            
+            Respond with JSON:
+            {
+                "document_type": "type",
+                "domain": "domain",
+                "confidence": 0.95,
+                "reasoning": "explanation",
+                "key_indicators": ["indicator1", "indicator2"]
+            }
+            """
+            
+            user_prompt = f"Classify this document content:\n\n{content[:2000]}..."
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = await llm.agenerate([messages])
             result_text = response.generations[0][0].text.strip()
             
-            # Extract JSON
+            # Extract JSON from response
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0]
             elif "```" in result_text:
                 result_text = result_text.split("```")[1]
             
-            import json
-            return json.loads(result_text)
+            result = json.loads(result_text)
+            return result
             
         except Exception as e:
             return {
                 "document_type": "unknown",
-                "domain": "other",
-                "missing_fields": [],
+                "domain": "unknown",
                 "confidence": 0.0,
-                "reasoning": f"Classification failed: {str(e)}"
+                "reasoning": f"Classification failed: {str(e)}",
+                "key_indicators": []
             }
 
 
-class FieldExtractionTool(Tool):
-    """Extract key fields from document"""
+class ContentAnalysisTool(Tool):
+    """Tool for analyzing document content structure"""
     
     def __init__(self):
-        super().__init__("extract_fields", "Extract key fields from document text")
+        super().__init__("analyze_content", "Analyze document content structure and characteristics")
     
-    async def execute(self, text: str, doc_type: str, **kwargs) -> Dict[str, Any]:
-        """Extract fields based on document type"""
-        try:
-            from langchain.chat_models import ChatOpenAI
-            from langchain.schema import HumanMessage
-            
-            llm = ChatOpenAI(model="gpt-4", temperature=0.1)
-            
-            field_mapping = {
-                "contract": ["parties", "effective_date", "termination_date", "value", "obligations"],
-                "invoice": ["invoice_number", "date", "amount", "vendor", "customer", "items"],
-                "policy": ["policy_number", "effective_date", "coverage", "exclusions", "premium"],
-                "regulation": ["regulation_number", "effective_date", "jurisdiction", "requirements"],
-                "compliance_report": ["report_date", "compliance_status", "findings", "recommendations"],
-                "legal_document": ["case_number", "filing_date", "parties", "relief_sought"],
-                "financial_statement": ["period", "revenue", "expenses", "net_income", "assets"],
-                "insurance_policy": ["policy_number", "insured", "coverage_amount", "premium", "term"],
-                "medical_record": ["patient_id", "date", "diagnosis", "treatment", "provider"]
-            }
-            
-            fields = field_mapping.get(doc_type, ["title", "date", "author"])
-            
-            prompt = f"""
-Extract key fields from this {doc_type} document. Respond with JSON only.
-
-DOCUMENT TEXT (first 1500 characters):
-{text[:1500]}...
-
-FIELDS TO EXTRACT: {fields}
-
-For each field, provide:
-- value: extracted value or null if not found
-- confidence: 0.0-1.0 based on clarity
-- location: approximate location in text
-
-Respond with JSON:
-{{
-    "fields": {{
-        "field_name": {{
-            "value": "extracted_value",
-            "confidence": 0.85,
-            "location": "description"
-        }}
-    }},
-    "overall_confidence": 0.8
-}}
-"""
-            
-            response = await llm.agenerate([[HumanMessage(content=prompt)]])
-            result_text = response.generations[0][0].text.strip()
-            
-            # Extract JSON
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0]
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1]
-            
-            import json
-            return json.loads(result_text)
-            
-        except Exception as e:
-            return {
-                "fields": {},
-                "overall_confidence": 0.0,
-                "error": str(e)
-            }
+    async def execute(self, content: str, **kwargs) -> Dict[str, Any]:
+        """Analyze content structure"""
+        import re
+        analysis = {
+            "word_count": len(content.split()),
+            "character_count": len(content),
+            "paragraph_count": len([p for p in content.split('\n\n') if p.strip()]),
+            "has_numbers": any(char.isdigit() for char in content),
+            "has_dates": self._extract_dates(content),
+            "has_legal_terms": self._check_legal_terms(content),
+            "has_financial_terms": self._check_financial_terms(content),
+            "structure_score": self._calculate_structure_score(content)
+        }
+        
+        return analysis
+    
+    def _extract_dates(self, content: str) -> List[str]:
+        """Extract dates from content"""
+        date_patterns = [
+            r'\d{1,2}/\d{1,2}/\d{2,4}',
+            r'\d{4}-\d{2}-\d{2}',
+            r'\w+ \d{1,2},? \d{4}'
+        ]
+        
+        dates = []
+        for pattern in date_patterns:
+            dates.extend(re.findall(pattern, content))
+        
+        return dates[:5]  # Limit to first 5 dates
+    
+    def _check_legal_terms(self, content: str) -> List[str]:
+        """Check for legal terms"""
+        legal_terms = [
+            "contract", "agreement", "terms", "conditions", "liability",
+            "jurisdiction", "governing law", "party", "breach", "termination",
+            "amendment", "warranty", "indemnification", "force majeure"
+        ]
+        
+        found_terms = []
+        content_lower = content.lower()
+        for term in legal_terms:
+            if term in content_lower:
+                found_terms.append(term)
+        
+        return found_terms
+    
+    def _check_financial_terms(self, content: str) -> List[str]:
+        """Check for financial terms"""
+        financial_terms = [
+            "payment", "amount", "currency", "invoice", "balance",
+            "total", "due", "account", "transaction", "fee",
+            "price", "cost", "revenue", "expense", "budget"
+        ]
+        
+        found_terms = []
+        content_lower = content.lower()
+        for term in financial_terms:
+            if term in content_lower:
+                found_terms.append(term)
+        
+        return found_terms
+    
+    def _calculate_structure_score(self, content: str) -> float:
+        """Calculate document structure score"""
+        score = 0.0
+        
+        # Check for headers
+        lines = content.split('\n')
+        header_count = sum(1 for line in lines if line.strip().isupper() and len(line.strip()) < 100)
+        score += min(0.3, header_count * 0.1)
+        
+        # Check for numbered sections
+        numbered_sections = sum(1 for line in lines if re.match(r'^\d+\.', line.strip()))
+        score += min(0.2, numbered_sections * 0.05)
+        
+        # Check for paragraphs
+        paragraphs = len([p for p in content.split('\n\n') if p.strip()])
+        score += min(0.2, paragraphs * 0.01)
+        
+        # Check for consistent formatting
+        if len(content) > 500:
+            score += 0.3
+        
+        return min(1.0, score)
 
 
 class ClassifierAgent(BaseAgent):
-    """Agent responsible for document classification and field identification"""
+    """Agent responsible for document classification and type determination"""
     
     def __init__(self, llm_model: str = "gpt-4"):
         super().__init__("ClassifierAgent", AgentType.CLASSIFIER)
@@ -149,74 +179,87 @@ class ClassifierAgent(BaseAgent):
         
         # Add tools
         self.add_tool(DocumentClassificationTool())
-        self.add_tool(FieldExtractionTool())
+        self.add_tool(ContentAnalysisTool())
     
     async def run(self, goal: str, context: Dict[str, Any]) -> AgentResult:
         """Main classification process"""
-        document = context.get("ingestion_result")
-        if not document or not hasattr(document, 'content'):
+        document = context.get("document")
+        if not document:
             return AgentResult(
                 output=None,
-                rationale="No document content available from ingestion",
+                rationale="No document provided in context",
                 confidence=0.0,
-                next_suggested_action="Ensure document is ingested first"
+                next_suggested_action="Provide document in context"
             )
         
         try:
+            # Analyze content structure
+            content_analysis_tool = self.get_tool("analyze_content")
+            content_analysis = await content_analysis_tool.execute(content=document.content)
+            
             # Classify document
-            classify_tool = self.get_tool("classify")
-            classification = await classify_tool.execute(text=document.content)
+            classification_tool = self.get_tool("classify")
+            classification = await classification_tool.execute(content=document.content)
             
-            # Extract fields
-            extract_tool = self.get_tool("extract_fields")
-            field_extraction = await extract_tool.execute(
-                text=document.content,
-                doc_type=classification.get("document_type", "unknown")
-            )
-            
-            # Update document with classification
-            document.doc_type = DocumentType(classification.get("document_type", "unknown"))
+            # Update document with classification results
+            document.doc_type = DocumentType(classification["document_type"])
             document.metadata.update({
                 "classification": classification,
-                "field_extraction": field_extraction,
-                "domain": classification.get("domain", "other"),
-                "missing_fields": classification.get("missing_fields", [])
+                "content_analysis": content_analysis,
+                "classified_at": datetime.utcnow().isoformat()
             })
             
             # Calculate overall confidence
-            classification_confidence = classification.get("confidence", 0.0)
-            field_confidence = field_extraction.get("overall_confidence", 0.0)
-            overall_confidence = (classification_confidence + field_confidence) / 2
-            
-            # Generate rationale
-            rationale = f"Classified as {classification.get('document_type', 'unknown')} ({classification.get('domain', 'other')} domain) with {len(field_extraction.get('fields', {}))} fields extracted. Missing: {', '.join(classification.get('missing_fields', []))}"
+            confidence = self._calculate_confidence(classification, content_analysis)
             
             return AgentResult(
                 output=document,
-                rationale=rationale,
-                confidence=overall_confidence,
-                next_suggested_action="Proceed to entity extraction" if overall_confidence > 0.6 else "Manual review recommended"
+                rationale=f"Classified as {classification['document_type']} in {classification['domain']} domain. {classification['reasoning']}",
+                confidence=confidence,
+                next_suggested_action="Proceed to entity extraction",
+                metadata={
+                    "classification": classification,
+                    "content_analysis": content_analysis
+                }
             )
             
         except Exception as e:
             return AgentResult(
-                output=document,
+                output=None,
                 rationale=f"Classification failed: {str(e)}",
                 confidence=0.0,
                 next_suggested_action="Manual classification required"
             )
     
-    def get_expected_fields(self, doc_type: str) -> List[str]:
-        """Get expected fields for document type"""
-        field_mapping = {
-            "contract": ["parties", "effective_date", "termination_date", "value", "obligations"],
-            "invoice": ["invoice_number", "date", "amount", "vendor", "customer", "items"],
-            "policy": ["policy_number", "effective_date", "coverage", "exclusions", "premium"],
-            "regulation": ["regulation_number", "effective_date", "jurisdiction", "requirements"],
-            "compliance_report": ["report_date", "compliance_status", "findings", "recommendations"],
-            "legal_document": ["case_number", "filing_date", "parties", "relief_sought"],
-            "financial_statement": ["period", "revenue", "expenses", "net_income", "assets"],
-            "insurance_policy": ["policy_number", "insured", "coverage_amount", "premium", "term"],
-            "medical_record": ["patient_id", "date", "diagnosis", "treatment", "provider"]
-        }
-        return field_mapping.get(doc_type, ["title", "date", "author"])
+    def _calculate_confidence(self, classification: Dict[str, Any], content_analysis: Dict[str, Any]) -> float:
+        """Calculate confidence based on classification and content analysis"""
+        base_confidence = classification.get("confidence", 0.5)
+        
+        # Adjust based on content analysis
+        adjustments = 0.0
+        
+        # Structure score adjustment
+        structure_score = content_analysis.get("structure_score", 0.0)
+        adjustments += structure_score * 0.2
+        
+        # Legal terms adjustment
+        legal_terms = content_analysis.get("has_legal_terms", [])
+        if classification["document_type"] == "contract" and legal_terms:
+            adjustments += min(0.2, len(legal_terms) * 0.05)
+        
+        # Financial terms adjustment
+        financial_terms = content_analysis.get("has_financial_terms", [])
+        if classification["document_type"] == "invoice" and financial_terms:
+            adjustments += min(0.2, len(financial_terms) * 0.05)
+        
+        # Word count adjustment
+        word_count = content_analysis.get("word_count", 0)
+        if word_count > 100:
+            adjustments += 0.1
+        
+        # Date presence adjustment
+        if content_analysis.get("has_dates"):
+            adjustments += 0.1
+        
+        final_confidence = base_confidence + adjustments
+        return min(1.0, max(0.0, final_confidence))
