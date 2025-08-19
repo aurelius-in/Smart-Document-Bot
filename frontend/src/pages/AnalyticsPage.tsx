@@ -5,7 +5,7 @@ const AnalyticsPage: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        Analytics
+        AI Document Agent - Analytics Dashboard
       </Typography>
       <Paper sx={{ p: 4, textAlign: 'center' }}>
         <Typography variant="h6" color="text.secondary">

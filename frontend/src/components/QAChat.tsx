@@ -29,7 +29,8 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Select
+  Select,
+  InputAdornment
 } from '@mui/material';
 import {
   Send,
@@ -130,7 +131,7 @@ const QAChat: React.FC<QAChatProps> = ({
       {
         id: '1',
         type: 'assistant',
-        content: `Hello! I'm your AI assistant for "${documentName}". I can help you understand this document by answering questions about its content, identifying key entities, assessing risks, and more. What would you like to know?`,
+        content: `Hello! I'm your AI Document Agent for "${documentName}". I can help you understand this document by answering questions about its content, identifying key entities, assessing risks, and more. What would you like to know?`,
         timestamp: new Date(),
         agentUsed: 'qa',
         confidence: 0.95
@@ -367,7 +368,7 @@ const QAChat: React.FC<QAChatProps> = ({
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <Typography variant="h6" display="flex" alignItems="center">
               <Help sx={{ mr: 1 }} />
-              Q&A Assistant
+              Ask Document AI
             </Typography>
             <Box display="flex" alignItems="center" gap={1}>
               <FormControl size="small" sx={{ minWidth: 150 }}>

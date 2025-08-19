@@ -118,9 +118,8 @@ const DocumentProcessingPipeline: React.FC<DocumentProcessingPipelineProps> = ({
     <Card>
       <CardContent>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <Typography variant="h6" display="flex" alignItems="center">
-            <PlayArrow sx={{ mr: 1 }} />
-            Document Processing Pipeline
+          <Typography variant="h6" gutterBottom>
+            AI Document Agent Processing Pipeline
           </Typography>
           <Box display="flex" alignItems="center" gap={1}>
             <Chip

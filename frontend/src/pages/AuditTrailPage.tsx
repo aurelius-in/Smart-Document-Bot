@@ -30,8 +30,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  LocalizationProvider
+  DialogActions
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -236,454 +235,452 @@ const AuditTrailPage: React.FC = () => {
   const stats = getAuditStats();
 
   return (
-    <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box>
-        <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-          Audit Trail
-        </Typography>
+    <Box>
+      <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
+        AI Document Agent - Audit Trail
+      </Typography>
 
-        <Grid container spacing={3}>
-          {/* Filters */}
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6">
-                    <FilterIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                    Filters & Search
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                      variant="outlined"
-                      startIcon={<RefreshIcon />}
-                      onClick={loadAuditEvents}
-                      disabled={isLoading}
-                    >
-                      Refresh
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      startIcon={<ClearIcon />}
-                      onClick={clearFilters}
-                    >
-                      Clear Filters
-                    </Button>
-                    <Button
-                      variant="contained"
-                      startIcon={<DownloadIcon />}
-                      onClick={exportAuditLog}
-                    >
-                      Export
-                    </Button>
-                  </Box>
+      <Grid container spacing={3}>
+        {/* Filters */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  <FilterIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Filters & Search
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<RefreshIcon />}
+                    onClick={loadAuditEvents}
+                    disabled={isLoading}
+                  >
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<ClearIcon />}
+                    onClick={clearFilters}
+                  >
+                    Clear Filters
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<DownloadIcon />}
+                    onClick={exportAuditLog}
+                  >
+                    Export
+                  </Button>
                 </Box>
+              </Box>
 
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={3}>
-                    <TextField
-                      fullWidth
-                      label="Search"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      InputProps={{
-                        startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <FormControl fullWidth>
-                      <InputLabel>Severity</InputLabel>
-                      <Select
-                        value={filterSeverity}
-                        label="Severity"
-                        onChange={(e) => setFilterSeverity(e.target.value)}
-                      >
-                        <MenuItem value="all">All Severities</MenuItem>
-                        <MenuItem value="critical">Critical</MenuItem>
-                        <MenuItem value="high">High</MenuItem>
-                        <MenuItem value="medium">Medium</MenuItem>
-                        <MenuItem value="low">Low</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <FormControl fullWidth>
-                      <InputLabel>Category</InputLabel>
-                      <Select
-                        value={filterCategory}
-                        label="Category"
-                        onChange={(e) => setFilterCategory(e.target.value)}
-                      >
-                        <MenuItem value="all">All Categories</MenuItem>
-                        {getUniqueCategories().map(category => (
-                          <MenuItem key={category} value={category}>
-                            {category.charAt(0).toUpperCase() + category.slice(1)}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={2}>
-                    <FormControl fullWidth>
-                      <InputLabel>User</InputLabel>
-                      <Select
-                        value={filterUser}
-                        label="User"
-                        onChange={(e) => setFilterUser(e.target.value)}
-                      >
-                        <MenuItem value="all">All Users</MenuItem>
-                        {getUniqueUsers().map(user => (
-                          <MenuItem key={user} value={user}>
-                            {user}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <DatePicker
-                        label="Start Date"
-                        value={startDate}
-                        onChange={(newValue) => setStartDate(newValue)}
-                        slotProps={{ textField: { fullWidth: true } }}
-                      />
-                      <DatePicker
-                        label="End Date"
-                        value={endDate}
-                        onChange={(newValue) => setEndDate(newValue)}
-                        slotProps={{ textField: { fullWidth: true } }}
-                      />
-                    </Box>
-                  </Grid>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    label="Search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    InputProps={{
+                      startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                    }}
+                  />
                 </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Statistics */}
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Audit Statistics
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" color="primary">
-                        {stats.total}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Total Events
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" color="error">
-                        {stats.critical}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Critical
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" color="warning.main">
-                        {stats.high}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        High
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" color="info.main">
-                        {stats.medium}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Medium
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" color="success.main">
-                        {stats.low}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Low
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={2}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" color="text.secondary">
-                        {auditEvents.length}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Total (All)
-                      </Typography>
-                    </Box>
-                  </Grid>
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth>
+                    <InputLabel>Severity</InputLabel>
+                    <Select
+                      value={filterSeverity}
+                      label="Severity"
+                      onChange={(e) => setFilterSeverity(e.target.value)}
+                    >
+                      <MenuItem value="all">All Severities</MenuItem>
+                      <MenuItem value="critical">Critical</MenuItem>
+                      <MenuItem value="high">High</MenuItem>
+                      <MenuItem value="medium">Medium</MenuItem>
+                      <MenuItem value="low">Low</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Audit Events Table */}
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Audit Events ({filteredEvents.length} events)
-                </Typography>
-
-                {isLoading ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                    {/* Assuming CircularProgress is available, otherwise replace with a simple text or spinner */}
-                    <Typography variant="body1">Loading...</Typography>
-                  </Box>
-                ) : filteredEvents.length === 0 ? (
-                  <Box sx={{ textAlign: 'center', py: 4 }}>
-                    <Typography variant="body1" color="text.secondary">
-                      No audit events found
-                    </Typography>
-                  </Box>
-                ) : (
-                  <>
-                    <TableContainer>
-                      <Table>
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Timestamp</TableCell>
-                            <TableCell>User</TableCell>
-                            <TableCell>Action</TableCell>
-                            <TableCell>Category</TableCell>
-                            <TableCell>Severity</TableCell>
-                            <TableCell>Resource</TableCell>
-                            <TableCell>IP Address</TableCell>
-                            <TableCell>Actions</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {filteredEvents
-                            .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((event) => (
-                              <TableRow key={event.id} hover>
-                                <TableCell>
-                                  <Typography variant="body2">
-                                    {formatTimestamp(event.timestamp)}
-                                  </Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <PersonIcon fontSize="small" />
-                                    {event.user}
-                                  </Box>
-                                </TableCell>
-                                <TableCell>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    {getActionIcon(event.action)}
-                                    <Typography variant="body2">
-                                      {event.action}
-                                    </Typography>
-                                  </Box>
-                                </TableCell>
-                                <TableCell>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    {getCategoryIcon(event.category)}
-                                    <Chip
-                                      label={event.category}
-                                      size="small"
-                                      variant="outlined"
-                                    />
-                                  </Box>
-                                </TableCell>
-                                <TableCell>
-                                  <Chip
-                                    label={event.severity}
-                                    color={getSeverityColor(event.severity)}
-                                    size="small"
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2" noWrap>
-                                    {event.resource}
-                                  </Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2" color="text.secondary">
-                                    {event.ipAddress || 'N/A'}
-                                  </Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Tooltip title="View Details">
-                                    <IconButton
-                                      size="small"
-                                      onClick={() => viewEventDetails(event.id)}
-                                    >
-                                      <ViewIcon />
-                                    </IconButton>
-                                  </Tooltip>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-
-                    <TablePagination
-                      component="div"
-                      count={filteredEvents.length}
-                      page={page}
-                      onPageChange={(_, newPage) => setPage(newPage)}
-                      rowsPerPage={rowsPerPage}
-                      onRowsPerPageChange={(e) => {
-                        setRowsPerPage(parseInt(e.target.value, 10));
-                        setPage(0);
-                      }}
-                      rowsPerPageOptions={[10, 25, 50, 100]}
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth>
+                    <InputLabel>Category</InputLabel>
+                    <Select
+                      value={filterCategory}
+                      label="Category"
+                      onChange={(e) => setFilterCategory(e.target.value)}
+                    >
+                      <MenuItem value="all">All Categories</MenuItem>
+                      {getUniqueCategories().map(category => (
+                        <MenuItem key={category} value={category}>
+                          {category.charAt(0).toUpperCase() + category.slice(1)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth>
+                    <InputLabel>User</InputLabel>
+                    <Select
+                      value={filterUser}
+                      label="User"
+                      onChange={(e) => setFilterUser(e.target.value)}
+                    >
+                      <MenuItem value="all">All Users</MenuItem>
+                      {getUniqueUsers().map(user => (
+                        <MenuItem key={user} value={user}>
+                          {user}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <DatePicker
+                      label="Start Date"
+                      value={startDate}
+                      onChange={(newValue) => setStartDate(newValue)}
+                      slotProps={{ textField: { fullWidth: true } }}
                     />
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
+                    <DatePicker
+                      label="End Date"
+                      value={endDate}
+                      onChange={(newValue) => setEndDate(newValue)}
+                      slotProps={{ textField: { fullWidth: true } }}
+                    />
+                  </Box>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
         </Grid>
 
-        {/* Event Details Dialog */}
-        <Dialog
-          open={viewDialogOpen}
-          onClose={() => setViewDialogOpen(false)}
-          maxWidth="md"
-          fullWidth
-        >
-          <DialogTitle>
-            Audit Event Details
-            {selectedEvent && (
-              <Typography variant="subtitle2" color="text.secondary">
-                Event ID: {selectedEvent.id}
+        {/* Statistics */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Audit Statistics
               </Typography>
-            )}
-          </DialogTitle>
-          <DialogContent>
-            {selectedEvent && (
-              <Box>
-                <Grid container spacing={2} sx={{ mb: 3 }}>
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Timestamp
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={2}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="primary">
+                      {stats.total}
                     </Typography>
-                    <Typography variant="body1">
-                      {formatTimestamp(selectedEvent.timestamp)}
+                    <Typography variant="body2" color="text.secondary">
+                      Total Events
                     </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      User
-                    </Typography>
-                    <Typography variant="body1">
-                      {selectedEvent.user}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Action
-                    </Typography>
-                    <Typography variant="body1">
-                      {selectedEvent.action}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Category
-                    </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {getCategoryIcon(selectedEvent.category)}
-                      <Typography variant="body1">
-                        {selectedEvent.category}
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Severity
-                    </Typography>
-                    <Chip
-                      label={selectedEvent.severity}
-                      color={getSeverityColor(selectedEvent.severity)}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      IP Address
-                    </Typography>
-                    <Typography variant="body1">
-                      {selectedEvent.ipAddress || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Resource
-                    </Typography>
-                    <Typography variant="body1">
-                      {selectedEvent.resource}
-                    </Typography>
-                  </Grid>
+                  </Box>
                 </Grid>
-
-                <Accordion>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography variant="h6">Event Details</Typography>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Typography variant="body1" gutterBottom>
-                      <strong>Description:</strong>
+                <Grid item xs={12} sm={6} md={2}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="error">
+                      {stats.critical}
                     </Typography>
-                    <Typography variant="body2" paragraph>
-                      {selectedEvent.description}
+                    <Typography variant="body2" color="text.secondary">
+                      Critical
                     </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="warning.main">
+                      {stats.high}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      High
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="info.main">
+                      {stats.medium}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Medium
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="success.main">
+                      {stats.low}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Low
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color="text.secondary">
+                      {auditEvents.length}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Total (All)
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
 
-                    {selectedEvent.metadata && Object.keys(selectedEvent.metadata).length > 0 && (
-                      <>
-                        <Typography variant="body1" gutterBottom>
-                          <strong>Metadata:</strong>
-                        </Typography>
-                        <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 1 }}>
-                          <pre style={{ margin: 0, fontSize: '0.875rem' }}>
-                            {JSON.stringify(selectedEvent.metadata, null, 2)}
-                          </pre>
-                        </Box>
-                      </>
-                    )}
+        {/* Audit Events Table */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Audit Events ({filteredEvents.length} events)
+              </Typography>
 
-                    {selectedEvent.outcome && (
-                      <>
-                        <Typography variant="body1" gutterBottom sx={{ mt: 2 }}>
-                          <strong>Outcome:</strong>
-                        </Typography>
-                        <Alert severity={selectedEvent.outcome === 'success' ? 'success' : 'error'}>
-                          {selectedEvent.outcome}
-                        </Alert>
-                      </>
-                    )}
-                  </AccordionDetails>
-                </Accordion>
-              </Box>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setViewDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogActions>
-        </Dialog>
-      </Box>
-    </LocalizationProvider>
+              {isLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  {/* Assuming CircularProgress is available, otherwise replace with a simple text or spinner */}
+                  <Typography variant="body1">Loading...</Typography>
+                </Box>
+              ) : filteredEvents.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No audit events found
+                  </Typography>
+                </Box>
+              ) : (
+                <>
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Timestamp</TableCell>
+                          <TableCell>User</TableCell>
+                          <TableCell>Action</TableCell>
+                          <TableCell>Category</TableCell>
+                          <TableCell>Severity</TableCell>
+                          <TableCell>Resource</TableCell>
+                          <TableCell>IP Address</TableCell>
+                          <TableCell>Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {filteredEvents
+                          .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                          .map((event) => (
+                            <TableRow key={event.id} hover>
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {formatTimestamp(event.timestamp)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <PersonIcon fontSize="small" />
+                                  {event.user}
+                                </Box>
+                              </TableCell>
+                              <TableCell>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  {getActionIcon(event.action)}
+                                  <Typography variant="body2">
+                                    {event.action}
+                                  </Typography>
+                                </Box>
+                              </TableCell>
+                              <TableCell>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  {getCategoryIcon(event.category)}
+                                  <Chip
+                                    label={event.category}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                </Box>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={event.severity}
+                                  color={getSeverityColor(event.severity)}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" noWrap>
+                                  {event.resource}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {event.ipAddress || 'N/A'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Tooltip title="View Details">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => viewEventDetails(event.id)}
+                                  >
+                                    <ViewIcon />
+                                  </IconButton>
+                                </Tooltip>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+
+                  <TablePagination
+                    component="div"
+                    count={filteredEvents.length}
+                    page={page}
+                    onPageChange={(_, newPage) => setPage(newPage)}
+                    rowsPerPage={rowsPerPage}
+                    onRowsPerPageChange={(e) => {
+                      setRowsPerPage(parseInt(e.target.value, 10));
+                      setPage(0);
+                    }}
+                    rowsPerPageOptions={[10, 25, 50, 100]}
+                  />
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Event Details Dialog */}
+      <Dialog
+        open={viewDialogOpen}
+        onClose={() => setViewDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Audit Event Details
+          {selectedEvent && (
+            <Typography variant="subtitle2" color="text.secondary">
+              Event ID: {selectedEvent.id}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {selectedEvent && (
+            <Box>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Timestamp
+                  </Typography>
+                  <Typography variant="body1">
+                    {formatTimestamp(selectedEvent.timestamp)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    User
+                  </Typography>
+                  <Typography variant="body1">
+                    {selectedEvent.user}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Action
+                  </Typography>
+                  <Typography variant="body1">
+                    {selectedEvent.action}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Category
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {getCategoryIcon(selectedEvent.category)}
+                    <Typography variant="body1">
+                      {selectedEvent.category}
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Severity
+                  </Typography>
+                  <Chip
+                    label={selectedEvent.severity}
+                    color={getSeverityColor(selectedEvent.severity)}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    IP Address
+                  </Typography>
+                  <Typography variant="body1">
+                    {selectedEvent.ipAddress || 'N/A'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Resource
+                  </Typography>
+                  <Typography variant="body1">
+                    {selectedEvent.resource}
+                  </Typography>
+                </Grid>
+              </Grid>
+
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="h6">Event Details</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Typography variant="body1" gutterBottom>
+                    <strong>Description:</strong>
+                  </Typography>
+                  <Typography variant="body2" paragraph>
+                    {selectedEvent.description}
+                  </Typography>
+
+                  {selectedEvent.metadata && Object.keys(selectedEvent.metadata).length > 0 && (
+                    <>
+                      <Typography variant="body1" gutterBottom>
+                        <strong>Metadata:</strong>
+                      </Typography>
+                      <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 1 }}>
+                        <pre style={{ margin: 0, fontSize: '0.875rem' }}>
+                          {JSON.stringify(selectedEvent.metadata, null, 2)}
+                        </pre>
+                      </Box>
+                    </>
+                  )}
+
+                  {selectedEvent.outcome && (
+                    <>
+                      <Typography variant="body1" gutterBottom sx={{ mt: 2 }}>
+                        <strong>Outcome:</strong>
+                      </Typography>
+                      <Alert severity={selectedEvent.outcome === 'success' ? 'success' : 'error'}>
+                        {selectedEvent.outcome}
+                      </Alert>
+                    </>
+                  )}
+                </AccordionDetails>
+              </Accordion>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewDialogOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 };
 

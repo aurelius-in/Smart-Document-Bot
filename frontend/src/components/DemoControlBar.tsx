@@ -185,9 +185,8 @@ const DemoControlBar: React.FC<DemoControlBarProps> = ({
     <Card sx={{ mb: 3, position: 'sticky', top: 0, zIndex: 1000 }}>
       <CardContent>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <Typography variant="h6" display="flex" alignItems="center">
-            <Business sx={{ mr: 1 }} />
-            Demo Control Bar
+          <Typography variant="h6" gutterBottom>
+            AI Document Agent Demo Controls
           </Typography>
           <Box display="flex" alignItems="center" gap={1}>
             <Chip

@@ -56,8 +56,7 @@ import {
   Security,
   Compare,
   QuestionAnswer,
-  Audit,
-  Classify,
+  Assessment,
   Search
 } from '@mui/icons-material';
 import { unifiedAgentService, agentUtils, AgentCapabilitiesResponse, AgentStatusResponse } from '../services/unifiedAgentService';
@@ -382,8 +381,8 @@ const UnifiedAgentInterface: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Unified Agent Interface
+      <Typography variant="h5" component="h2" gutterBottom>
+        AI Document Agent Interface
       </Typography>
 
       {/* Status Overview */}

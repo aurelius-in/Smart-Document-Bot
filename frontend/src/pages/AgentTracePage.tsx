@@ -1,60 +1,77 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
+  Container,
   Typography,
-  Paper,
-  Button,
-  Grid,
   Card,
   CardContent,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField,
-  CircularProgress,
-  Alert,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent,
-  Chip,
+  Button,
+  Grid,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
+  Chip,
+  Paper,
   Divider,
-  Switch,
-  FormControlLabel,
+  IconButton,
+  Tooltip,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  LinearProgress,
+  Avatar,
+  Switch,
+  FormControlLabel,
+  CircularProgress
 } from '@mui/material';
 import {
-  PlayArrow as PlayIcon,
-  Refresh as RefreshIcon,
-  Visibility as ViewIcon,
-  ExpandMore as ExpandMoreIcon,
-  CheckCircle as SuccessIcon,
-  Error as ErrorIcon,
-  Warning as WarningIcon,
-  Info as InfoIcon,
-  Schedule as PendingIcon,
-  Stop as StopIcon,
-  PlayCircle as StartIcon,
-  History as HistoryIcon,
-  FilterList as FilterIcon,
-  LiveTv as LiveIcon
+  PlayArrow,
+  Stop,
+  Refresh,
+  Visibility,
+  VisibilityOff,
+  ExpandMore,
+  ExpandLess,
+  Settings,
+  BugReport,
+  Timeline as TimelineIcon,
+  Psychology,
+  Build,
+  CheckCircle,
+  Error,
+  Schedule,
+  TrendingUp,
+  TrendingDown,
+  Help,
+  Code,
+  DataUsage,
+  Memory,
+  Speed,
+  Add,
+  Delete,
+  Download,
+  Share,
+  Info,
+  Warning,
+  History,
+  FilterList,
+  LiveTv
 } from '@mui/icons-material';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
-import apiService, { AgentTrace, AgentStep } from '../services/apiService';
+import { apiService } from '../services/apiService';
+import { AgentTrace, AgentStep } from '../types/agent';
 
 const AgentTracePage: React.FC = () => {
   const [traces, setTraces] = useState<AgentTrace[]>([]);
@@ -150,22 +167,22 @@ const AgentTracePage: React.FC = () => {
 
   const getStepIcon = (stepType: string) => {
     switch (stepType) {
-      case 'ocr': return <InfoIcon />;
-      case 'extraction': return <ViewIcon />;
-      case 'analysis': return <StartIcon />;
-      case 'validation': return <SuccessIcon />;
-      case 'compliance_check': return <WarningIcon />;
-      default: return <InfoIcon />;
+      case 'ocr': return <Info />;
+      case 'extraction': return <Visibility />;
+      case 'analysis': return <PlayArrow />;
+      case 'validation': return <CheckCircle />;
+      case 'compliance_check': return <Warning />;
+      default: return <Info />;
     }
   };
 
   const getStepStatusIcon = (status: string) => {
     switch (status) {
-      case 'completed': return <SuccessIcon color="success" />;
+      case 'completed': return <CheckCircle color="success" />;
       case 'processing': return <CircularProgress size={16} />;
-      case 'error': return <ErrorIcon color="error" />;
-      case 'pending': return <PendingIcon color="disabled" />;
-      default: return <InfoIcon />;
+      case 'error': return <Error color="error" />;
+      case 'pending': return <Schedule color="disabled" />;
+      default: return <Info />;
     }
   };
 
@@ -182,7 +199,7 @@ const AgentTracePage: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        Agent Trace Monitor
+        AI Document Agent - Agent Trace Monitor
       </Typography>
 
       <Grid container spacing={3}>
@@ -192,7 +209,7 @@ const AgentTracePage: React.FC = () => {
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">
-                  <HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  <History sx={{ mr: 1, verticalAlign: 'middle' }} />
                   Trace Controls
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -206,7 +223,7 @@ const AgentTracePage: React.FC = () => {
                     }
                     label={
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <LiveIcon sx={{ mr: 1 }} />
+                        <LiveTv sx={{ mr: 1 }} />
                         Live Mode
                       </Box>
                     }
@@ -231,7 +248,7 @@ const AgentTracePage: React.FC = () => {
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <Button
                   variant="contained"
-                  startIcon={<PlayIcon />}
+                  startIcon={<PlayArrow />}
                   onClick={startNewTrace}
                   disabled={isStartingTrace}
                 >
@@ -246,7 +263,7 @@ const AgentTracePage: React.FC = () => {
                 </Button>
                 <Button
                   variant="outlined"
-                  startIcon={<RefreshIcon />}
+                  startIcon={<Refresh />}
                   onClick={loadTraces}
                   disabled={isLoading}
                 >
@@ -269,7 +286,7 @@ const AgentTracePage: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                <FilterIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                <FilterList sx={{ mr: 1, verticalAlign: 'middle' }} />
                 Recent Traces ({filteredTraces.length})
               </Typography>
               
@@ -293,7 +310,7 @@ const AgentTracePage: React.FC = () => {
                         onClick={() => setSelectedTrace(trace)}
                       >
                         <ListItemIcon>
-                          <StartIcon color="primary" />
+                          <PlayArrow color="primary" />
                         </ListItemIcon>
                         <ListItemText
                           primary={
@@ -369,23 +386,26 @@ const AgentTracePage: React.FC = () => {
                   </Typography>
 
                   {selectedTrace.steps && selectedTrace.steps.length > 0 ? (
-                    <Timeline position="alternate">
+                    <List>
                       {selectedTrace.steps.map((step: AgentStep, index: number) => (
-                        <TimelineItem key={step.id}>
-                          <TimelineOppositeContent sx={{ m: 'auto 0' }} variant="body2" color="text.secondary">
-                            {step.duration ? formatDuration(step.duration) : 'Pending'}
-                          </TimelineOppositeContent>
-                          <TimelineSeparator>
-                            <TimelineDot color={getStatusColor(step.status)}>
-                              {getStepIcon(step.type)}
-                            </TimelineDot>
-                            {index < selectedTrace.steps!.length - 1 && <TimelineConnector />}
-                          </TimelineSeparator>
-                          <TimelineContent sx={{ py: '12px', px: 2 }}>
-                            <Accordion>
-                              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  {getStepStatusIcon(step.status)}
+                        <ListItem key={step.id} sx={{ flexDirection: 'column', alignItems: 'stretch', p: 0, mb: 2 }}>
+                          <Paper elevation={1} sx={{ p: 2, width: '100%' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                              <Avatar
+                                sx={{
+                                  bgcolor: step.status === 'completed' ? 'success.main' :
+                                           step.status === 'error' ? 'error.main' :
+                                           step.status === 'pending' ? 'warning.main' :
+                                           'primary.main',
+                                  width: 40,
+                                  height: 40
+                                }}
+                              >
+                                {getStepIcon(step.type)}
+                              </Avatar>
+                              
+                              <Box flex={1}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                                   <Typography variant="subtitle2">
                                     {step.name}
                                   </Typography>
@@ -394,40 +414,66 @@ const AgentTracePage: React.FC = () => {
                                     size="small"
                                     variant="outlined"
                                   />
+                                  <Chip
+                                    label={step.status}
+                                    color={step.status === 'completed' ? 'success' : 
+                                           step.status === 'error' ? 'error' : 
+                                           step.status === 'pending' ? 'warning' : 'default'}
+                                    size="small"
+                                  />
                                 </Box>
+                                
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {step.startTime.toLocaleTimeString()}
+                                  </Typography>
+                                  {step.duration && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      {formatDuration(step.duration)}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </Box>
+                              
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                {getStepStatusIcon(step.status)}
+                              </Box>
+                            </Box>
+
+                            <Typography variant="body2" color="text.secondary" gutterBottom>
+                              {step.rationale}
+                            </Typography>
+
+                            <Accordion>
+                              <AccordionSummary expandIcon={<ExpandMore />}>
+                                <Typography variant="subtitle2">Step Details</Typography>
                               </AccordionSummary>
                               <AccordionDetails>
                                 <Box>
                                   <Typography variant="body2" gutterBottom>
-                                    <strong>Status:</strong> {step.status}
+                                    <strong>Input:</strong>
                                   </Typography>
-                                  {step.input && (
-                                    <Typography variant="body2" gutterBottom>
-                                      <strong>Input:</strong> {step.input}
+                                  <Paper variant="outlined" sx={{ p: 1, mb: 2, backgroundColor: 'grey.50' }}>
+                                    <Typography variant="caption" fontFamily="monospace">
+                                      {JSON.stringify(step.input, null, 2)}
                                     </Typography>
-                                  )}
-                                  {step.output && (
-                                    <Typography variant="body2" gutterBottom>
-                                      <strong>Output:</strong> {step.output}
+                                  </Paper>
+                                  
+                                  <Typography variant="body2" gutterBottom>
+                                    <strong>Output:</strong>
+                                  </Typography>
+                                  <Paper variant="outlined" sx={{ p: 1, backgroundColor: 'grey.50' }}>
+                                    <Typography variant="caption" fontFamily="monospace">
+                                      {JSON.stringify(step.output, null, 2)}
                                     </Typography>
-                                  )}
-                                  {step.error && (
-                                    <Alert severity="error" sx={{ mt: 1 }}>
-                                      {step.error}
-                                    </Alert>
-                                  )}
-                                  {step.metadata && Object.keys(step.metadata).length > 0 && (
-                                    <Typography variant="body2" sx={{ mt: 1 }}>
-                                      <strong>Metadata:</strong> {JSON.stringify(step.metadata, null, 2)}
-                                    </Typography>
-                                  )}
+                                  </Paper>
                                 </Box>
                               </AccordionDetails>
                             </Accordion>
-                          </TimelineContent>
-                        </TimelineItem>
+                          </Paper>
+                        </ListItem>
                       ))}
-                    </Timeline>
+                    </List>
                   ) : (
                     <Box sx={{ textAlign: 'center', py: 4 }}>
                       <Typography variant="body1" color="text.secondary">

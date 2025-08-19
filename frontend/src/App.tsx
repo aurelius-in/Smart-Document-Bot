@@ -1,84 +1,117 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { Box, CircularProgress } from '@mui/material';
-import { useAuth } from './contexts/AuthContext';
+import React, { useState } from 'react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { CssBaseline, Box } from '@mui/material';
+import { Toaster } from 'react-hot-toast';
 
-// Layout Components
-import Layout from './components/Layout/Layout';
-import DemoControlBar from './components/Layout/DemoControlBar';
+// Import the showpiece dashboard
+import ShowpieceDashboard from './components/ShowpieceDashboard';
 
-// Pages
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import UploadPage from './pages/UploadPage';
-import DocumentViewerPage from './pages/DocumentViewerPage';
-import AgentTracePage from './pages/AgentTracePage';
-import AnalyticsPage from './pages/AnalyticsPage';
-import QAPage from './pages/QAPage';
-import ComparePage from './pages/ComparePage';
-import AuditTrailPage from './pages/AuditTrailPage';
-import SettingsPage from './pages/SettingsPage';
-
-// Protected Route Component
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="100vh"
-      >
-        <CircularProgress size={60} />
-      </Box>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <>{children}</>;
-};
+// Import other components for fallback
+import UnifiedAgentInterface from './components/UnifiedAgentInterface';
 
 const App: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  const [showLegacyInterface, setShowLegacyInterface] = useState(false);
+
+  // Create a professional theme for the showpiece
+  const theme = createTheme({
+    palette: {
+      mode: 'light',
+      primary: {
+        main: '#1976d2',
+        light: '#42a5f5',
+        dark: '#1565c0',
+      },
+      secondary: {
+        main: '#dc004e',
+        light: '#ff5983',
+        dark: '#9a0036',
+      },
+      background: {
+        default: '#f5f5f5',
+        paper: '#ffffff',
+      },
+    },
+    typography: {
+      fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+      h4: {
+        fontWeight: 600,
+      },
+      h6: {
+        fontWeight: 500,
+      },
+    },
+    components: {
+      MuiCard: {
+        styleOverrides: {
+          root: {
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            borderRadius: 8,
+          },
+        },
+      },
+      MuiButton: {
+        styleOverrides: {
+          root: {
+            textTransform: 'none',
+            borderRadius: 6,
+          },
+        },
+      },
+    },
+  });
+
+  const handleExport = () => {
+    // Implementation for export functionality
+    console.log('Export functionality triggered');
+  };
+
+  const handleShare = () => {
+    // Implementation for share functionality
+    console.log('Share functionality triggered');
+  };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {isAuthenticated && <DemoControlBar />}
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ height: '100vh', overflow: 'hidden' }}>
+        {/* Showpiece Dashboard - Primary Interface */}
+        <ShowpieceDashboard
+          onExport={handleExport}
+          onShare={handleShare}
+        />
+        
+        {/* Legacy Interface - Hidden by default, accessible via URL parameter */}
+        {showLegacyInterface && (
+          <UnifiedAgentInterface />
+        )}
+      </Box>
       
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/login" element={<LoginPage />} />
-        
-        {/* Protected Routes */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="upload" element={<UploadPage />} />
-          <Route path="document/:id" element={<DocumentViewerPage />} />
-          <Route path="trace/:id" element={<AgentTracePage />} />
-          <Route path="analytics" element={<AnalyticsPage />} />
-          <Route path="qa" element={<QAPage />} />
-          <Route path="compare" element={<ComparePage />} />
-          <Route path="audit" element={<AuditTrailPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
-        
-        {/* Catch all route */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </Box>
+      {/* Toast notifications */}
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+          },
+          success: {
+            duration: 3000,
+            iconTheme: {
+              primary: '#4caf50',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            duration: 5000,
+            iconTheme: {
+              primary: '#f44336',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
+    </ThemeProvider>
   );
 };
 
