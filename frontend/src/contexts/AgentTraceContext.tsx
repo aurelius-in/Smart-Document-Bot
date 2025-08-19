@@ -204,7 +204,7 @@ export const AgentTraceProvider: React.FC<AgentTraceProviderProps> = ({ children
       try {
         const updates = await agentService.getTraceUpdates(traceId);
         if (updates && updates.steps) {
-          updates.steps.forEach(step => {
+          updates.steps.forEach((step: any) => {
             updateTrace(traceId, step);
           });
         }

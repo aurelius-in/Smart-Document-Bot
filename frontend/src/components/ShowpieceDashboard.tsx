@@ -102,11 +102,9 @@ const ShowpieceDashboard: React.FC<ShowpieceDashboardProps> = ({
   const [currentDocument, setCurrentDocument] = useState({
     id: 'demo-doc-1',
     name: 'Financial Services Agreement',
-    content: `FINANCIAL SERVICES AGREEMENT
+    content: `This Financial Services Agreement (the "Agreement") is entered into as of January 15, 2024 (the "Effective Date") by and between:
 
-This Financial Services Agreement (the "Agreement") is entered into as of January 15, 2024 (the "Effective Date") by and between:
-
-ACME Financial Services, Inc., a Delaware corporation with its principal place of business at 123 Wall Street, New York, NY 10001 ("Provider")
+Global Financial Services, Inc., a Delaware corporation with its principal place of business at 123 Wall Street, New York, NY 10001 ("Provider")
 
 and
 
@@ -142,7 +140,7 @@ Provider's liability shall be limited to the amount of fees paid by Client in th
 10. GOVERNING LAW
 This Agreement shall be governed by the laws of the State of New York.`,
     entities: [
-      { id: '1', text: 'ACME Financial Services, Inc.', type: 'ORGANIZATION', start: 150, end: 180, confidence: 0.95 },
+      { id: '1', text: 'Global Financial Services, Inc.', type: 'ORGANIZATION', start: 150, end: 180, confidence: 0.95 },
       { id: '2', text: 'Global Investment Partners, LLC', type: 'ORGANIZATION', start: 200, end: 235, confidence: 0.93 },
       { id: '3', text: 'January 15, 2024', type: 'DATE', start: 80, end: 95, confidence: 0.98 },
       { id: '4', text: '$25,000', type: 'MONEY', start: 450, end: 458, confidence: 0.96 },
@@ -255,7 +253,7 @@ This Agreement shall be governed by the laws of the State of New York.`,
           id: '2',
           name: 'extract_entities',
           parameters: { text: 'document content...' },
-          result: { entities: ['ACME Financial Services', 'Global Investment Partners', '$25,000'] },
+          result: { entities: ['Global Financial Services', 'Global Investment Partners', '$25,000'] },
           duration: 1800,
           status: 'success' as const
         }
@@ -587,9 +585,6 @@ This Agreement shall be governed by the laws of the State of New York.`,
       case 'viewer':
         return (
           <Box>
-            <Typography variant="h4" gutterBottom>
-              Document Viewer with Analysis
-            </Typography>
             <DocumentViewer
               documentId={currentDocument.id}
               documentName={currentDocument.name}

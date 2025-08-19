@@ -71,7 +71,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { apiService } from '../services/apiService';
-import { AgentTrace, AgentStep } from '../types/agent';
+import { AgentTrace, AgentStep } from '../services/apiService';
 
 const AgentTracePage: React.FC = () => {
   const [traces, setTraces] = useState<AgentTrace[]>([]);
@@ -129,10 +129,7 @@ const AgentTracePage: React.FC = () => {
   const startNewTrace = async () => {
     try {
       setIsStartingTrace(true);
-      const newTrace = await apiService.startAgentTrace({
-        documentId: '', // Will be set by backend based on context
-        traceType: 'document_processing'
-      });
+      const newTrace = await apiService.startAgentTrace(''); // Will be set by backend based on context
       
       setTraces(prev => [newTrace, ...prev]);
       setSelectedTrace(newTrace);

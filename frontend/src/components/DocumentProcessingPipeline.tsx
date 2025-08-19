@@ -372,20 +372,17 @@ const DocumentProcessingPipeline: React.FC<DocumentProcessingPipelineProps> = ({
                                                    <Typography variant="body2" sx={{ fontFamily: 'serif', fontSize: '0.875rem', lineHeight: 1.6 }}>
                             <Box sx={{ textAlign: 'center', mb: 3 }}>
                               <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                                ACME FINANCIAL SERVICES, INC.
+                                GLOBAL FINANCIAL SERVICES, INC.
                               </Typography>
                               <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
                                 123 Wall Street, New York, NY 10001<br/>
                                 Tel: (212) 555-0123 | Fax: (212) 555-0124<br/>
-                                www.acmefinancial.com
+                                www.globalfinancial.com
                               </Typography>
                               <Box sx={{ borderBottom: '2px solid #333', width: '60%', mx: 'auto', mb: 2 }} />
                             </Box>
                             
                             <Box sx={{ textAlign: 'center', mb: 4 }}>
-                              <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 2 }}>
-                                FINANCIAL SERVICES AGREEMENT
-                              </Typography>
                               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                                 Agreement No: FSA-2024-0015<br/>
                                 Effective Date: January 15, 2024
@@ -398,7 +395,7 @@ const DocumentProcessingPipeline: React.FC<DocumentProcessingPipelineProps> = ({
                             
                             <Box sx={{ pl: 3, mb: 3 }}>
                               <Typography variant="body2" sx={{ mb: 1 }}>
-                                <strong>ACME Financial Services, Inc.</strong>, a Delaware corporation with its principal place of business at 123 Wall Street, New York, NY 10001 ("Provider")
+                                <strong>Global Financial Services, Inc.</strong>, a Delaware corporation with its principal place of business at 123 Wall Street, New York, NY 10001 ("Provider")
                               </Typography>
                               <Typography variant="body2">
                                 and
@@ -443,7 +440,7 @@ const DocumentProcessingPipeline: React.FC<DocumentProcessingPipelineProps> = ({
                             
                             <Box sx={{ textAlign: 'center', mt: 4, pt: 2, borderTop: '1px solid #ccc' }}>
                               <Typography variant="body2" sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>
-                                Page 1 of 12 | ACME Financial Services Agreement | FSA-2024-0015
+                                Page 1 of 12 | FSA-2024-0015
                               </Typography>
                             </Box>
                           </Typography>
@@ -469,7 +466,7 @@ const DocumentProcessingPipeline: React.FC<DocumentProcessingPipelineProps> = ({
                        </Typography>
                        <Box sx={{ pl: 2 }}>
                          <Typography variant="body2">
-                           • <strong>Organizations:</strong> ACME Financial Services, Inc., Global Investment Partners, LLC
+                           • <strong>Organizations:</strong> Global Financial Services, Inc., Global Investment Partners, LLC
                          </Typography>
                          <Typography variant="body2">
                            • <strong>Dates:</strong> January 15, 2024
