@@ -8,6 +8,8 @@ AI Document Agent is a comprehensive platform that leverages multiple AI agents 
 
 ![aiDa Dashboard Demo](tab1.gif)
 
+![aiDa Processing Pipeline Demo](tab2.gif)
+
 ## Features
 
 - **Multi-Agent Processing**: Orchestrated AI agents for document ingestion, classification, entity extraction, and analysis
