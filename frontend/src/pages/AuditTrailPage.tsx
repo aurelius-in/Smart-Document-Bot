@@ -98,8 +98,8 @@ const AuditTrailPage: React.FC = () => {
     if (searchTerm) {
       filtered = filtered.filter(event =>
         event.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        event.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        event.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        event.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        event.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         event.resource.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
@@ -116,7 +116,7 @@ const AuditTrailPage: React.FC = () => {
 
     // User filter
     if (filterUser !== 'all') {
-      filtered = filtered.filter(event => event.user === filterUser);
+      filtered = filtered.filter(event => event.userName === filterUser);
     }
 
     // Date range filter
@@ -213,12 +213,12 @@ const AuditTrailPage: React.FC = () => {
   };
 
   const getUniqueUsers = () => {
-    const users = [...new Set(auditEvents.map(event => event.user))];
+    const users = Array.from(new Set(auditEvents.map(event => event.userName)));
     return users.sort();
   };
 
   const getUniqueCategories = () => {
-    const categories = [...new Set(auditEvents.map(event => event.category))];
+    const categories = Array.from(new Set(auditEvents.map(event => event.category)));
     return categories.sort();
   };
 
@@ -480,7 +480,7 @@ const AuditTrailPage: React.FC = () => {
                               <TableCell>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                   <PersonIcon fontSize="small" />
-                                  {event.user}
+                                  {event.userName}
                                 </Box>
                               </TableCell>
                               <TableCell>
@@ -585,7 +585,7 @@ const AuditTrailPage: React.FC = () => {
                     User
                   </Typography>
                   <Typography variant="body1">
-                    {selectedEvent.user}
+                    {selectedEvent.userName}
                   </Typography>
                 </Grid>
                 <Grid item xs={6}>
@@ -643,7 +643,7 @@ const AuditTrailPage: React.FC = () => {
                     <strong>Description:</strong>
                   </Typography>
                   <Typography variant="body2" paragraph>
-                    {selectedEvent.description}
+                    {selectedEvent.details}
                   </Typography>
 
                   {selectedEvent.metadata && Object.keys(selectedEvent.metadata).length > 0 && (
@@ -659,16 +659,7 @@ const AuditTrailPage: React.FC = () => {
                     </>
                   )}
 
-                  {selectedEvent.outcome && (
-                    <>
-                      <Typography variant="body1" gutterBottom sx={{ mt: 2 }}>
-                        <strong>Outcome:</strong>
-                      </Typography>
-                      <Alert severity={selectedEvent.outcome === 'success' ? 'success' : 'error'}>
-                        {selectedEvent.outcome}
-                      </Alert>
-                    </>
-                  )}
+
                 </AccordionDetails>
               </Accordion>
             </Box>

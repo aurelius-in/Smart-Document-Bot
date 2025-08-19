@@ -34,7 +34,8 @@ import {
   Security,
   Timeline,
   Analytics,
-  Assessment
+  Assessment,
+  Tune
 } from '@mui/icons-material';
 import { toast } from 'react-hot-toast';
 
@@ -191,7 +192,7 @@ const ControlBar: React.FC<ControlBarProps> = ({
              placement="bottom"
            >
              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }}>
-               <Settings sx={{ fontSize: '1.5rem' }} />
+               <Tune sx={{ fontSize: '1.5rem' }} />
                Controls
              </Typography>
            </Tooltip>
@@ -218,14 +219,6 @@ const ControlBar: React.FC<ControlBarProps> = ({
                }}
              />
             {isProcessing && <LinearProgress sx={{ width: 100 }} />}
-            <Tooltip title="Advanced Settings">
-              <IconButton
-                size="small"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-              >
-                <Settings />
-              </IconButton>
-            </Tooltip>
           </Box>
         </Box>
 

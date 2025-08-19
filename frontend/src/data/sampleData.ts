@@ -49,59 +49,158 @@ export interface SamplePolicy {
 export const sampleDocuments: SampleDocument[] = [
   {
     id: 'finance-agreement-1',
-    name: 'Financial Services Agreement - ACME Corp',
+    name: 'Financial Advisory Services Agreement - Global Financial Services',
     type: 'Financial Agreement',
     scenario: 'finance',
-    content: `FINANCIAL SERVICES AGREEMENT
+    content: `FINANCIAL ADVISORY SERVICES AGREEMENT
 
-This Financial Services Agreement (the "Agreement") is entered into as of January 15, 2024 (the "Effective Date") by and between:
+Agreement No: FSA-2024-0015
+Effective Date: January 15, 2024
+Document Version: 2.1
 
-ACME Financial Services, Inc., a Delaware corporation with its principal place of business at 123 Wall Street, New York, NY 10001 ("Provider")
+This Financial Advisory Services Agreement (the "Agreement") is entered into as of January 15, 2024 (the "Effective Date") by and between:
+
+Global Financial Services, Inc., a Delaware corporation with its principal place of business at 123 Wall Street, Suite 1500, New York, NY 10001 ("Provider" or "Advisor")
 
 and
 
-Global Investment Partners, LLC, a New York limited liability company with its principal place of business at 456 Park Avenue, New York, NY 10022 ("Client")
+Global Investment Partners, LLC, a New York limited liability company with its principal place of business at 456 Park Avenue, 25th Floor, New York, NY 10022 ("Client" or "Investor")
 
-1. SERVICES
-Provider shall provide comprehensive financial advisory services including portfolio management, risk assessment, and compliance monitoring.
+WHEREAS, Client desires to engage Provider to provide comprehensive financial advisory and investment management services; and
 
-2. TERM
-This Agreement shall commence on the Effective Date and continue for a period of three (3) years unless terminated earlier in accordance with Section 8.
+WHEREAS, Provider is registered as an investment adviser with the Securities and Exchange Commission and is qualified to provide such services;
 
-3. COMPENSATION
-Client shall pay Provider a monthly fee of $25,000 for services rendered, payable within 30 days of invoice.
+NOW, THEREFORE, in consideration of the mutual promises and covenants contained herein, the parties agree as follows:
 
-4. CONFIDENTIALITY
-Both parties agree to maintain strict confidentiality of all proprietary information shared during the term of this Agreement.
+ARTICLE I - SERVICES AND SCOPE
 
-5. COMPLIANCE
-Provider shall comply with all applicable SEC regulations, including but not limited to the Investment Advisers Act of 1940.
+1.1 Advisory Services. Provider shall provide the following financial advisory services to Client:
+   (a) Portfolio management and asset allocation strategies
+   (b) Investment research and analysis
+   (c) Risk assessment and management
+   (d) Compliance monitoring and regulatory reporting
+   (e) Quarterly performance reviews and reporting
+   (f) Tax-efficient investment planning
 
-6. RISK MANAGEMENT
-Provider shall implement comprehensive risk management procedures and provide monthly risk assessment reports.
+1.2 Investment Authority. Client hereby grants Provider discretionary authority to manage Client's investment portfolio in accordance with the investment objectives and risk parameters established in Schedule A hereto.
 
-7. DATA PROTECTION
-All client data shall be protected in accordance with applicable data protection laws and industry best practices.
+ARTICLE II - TERM AND TERMINATION
 
-8. TERMINATION
-Either party may terminate this Agreement with thirty (30) days written notice to the other party.
+2.1 Term. This Agreement shall commence on the Effective Date and continue for a period of three (3) years, unless terminated earlier in accordance with the provisions of this Article II.
 
-9. LIABILITY
-Provider's liability shall be limited to the amount of fees paid by Client in the twelve months preceding any claim.
+2.2 Termination by Either Party. Either party may terminate this Agreement upon thirty (30) days written notice to the other party.
 
-10. GOVERNING LAW
-This Agreement shall be governed by the laws of the State of New York.`,
-    entities: [
-      { id: '1', text: 'ACME Financial Services, Inc.', type: 'ORGANIZATION', start: 150, end: 180, confidence: 0.95 },
-      { id: '2', text: 'Global Investment Partners, LLC', type: 'ORGANIZATION', start: 200, end: 235, confidence: 0.93 },
-      { id: '3', text: 'January 15, 2024', type: 'DATE', start: 80, end: 95, confidence: 0.98 },
-      { id: '4', text: '$25,000', type: 'MONEY', start: 450, end: 458, confidence: 0.96 },
-      { id: '5', text: 'three (3) years', type: 'CONTRACT_TERM', start: 380, end: 395, confidence: 0.89 },
-      { id: '6', text: 'thirty (30) days', type: 'CONTRACT_TERM', start: 750, end: 765, confidence: 0.91 },
-      { id: '7', text: 'SEC regulations', type: 'COMPLIANCE_ITEM', start: 520, end: 535, confidence: 0.87 },
-      { id: '8', text: 'Investment Advisers Act of 1940', type: 'COMPLIANCE_ITEM', start: 540, end: 570, confidence: 0.92 }
-    ],
-    highlights: ['1', '2', '4', '7', '8'],
+2.3 Effect of Termination. Upon termination, Provider shall:
+   (a) Provide a final accounting of all transactions
+   (b) Transfer all client assets to Client or Client's designated custodian
+   (c) Return all client records and documents
+
+ARTICLE III - COMPENSATION AND FEES
+
+3.1 Advisory Fees. Client shall pay Provider an annual advisory fee of $300,000, payable in monthly installments of $25,000, due within thirty (30) days of invoice.
+
+3.2 Fee Calculation. Advisory fees are calculated based on the market value of assets under management as of the last business day of each month.
+
+3.3 Additional Services. Any additional services not covered by this Agreement shall be billed at Provider's standard hourly rates.
+
+ARTICLE IV - CONFIDENTIALITY AND PRIVACY
+
+4.1 Confidential Information. Both parties acknowledge that they may have access to confidential and proprietary information of the other party and agree to maintain strict confidentiality of such information.
+
+4.2 Privacy Protection. Provider shall comply with all applicable privacy laws, including but not limited to the Gramm-Leach-Bliley Act and Regulation S-P.
+
+4.3 Data Security. Provider shall implement and maintain appropriate technical and organizational measures to protect client data against unauthorized access, alteration, disclosure, or destruction.
+
+ARTICLE V - COMPLIANCE AND REGULATORY MATTERS
+
+5.1 Regulatory Compliance. Provider represents and warrants that it is registered as an investment adviser with the Securities and Exchange Commission under the Investment Advisers Act of 1940.
+
+5.2 Fiduciary Duty. Provider acknowledges its fiduciary duty to act in the best interests of Client and to provide investment advice that is suitable for Client's investment objectives and risk tolerance.
+
+5.3 Code of Ethics. Provider shall maintain and enforce a code of ethics that addresses conflicts of interest and personal trading by advisory personnel.
+
+ARTICLE VI - RISK MANAGEMENT
+
+6.1 Risk Assessment. Provider shall conduct ongoing risk assessments of Client's portfolio and provide monthly risk management reports.
+
+6.2 Investment Guidelines. All investments shall be made in accordance with the investment guidelines set forth in Schedule B hereto.
+
+6.3 Diversification. Provider shall maintain appropriate portfolio diversification to manage investment risk.
+
+ARTICLE VII - REPORTS AND COMMUNICATIONS
+
+7.1 Quarterly Reports. Provider shall provide quarterly performance reports including:
+   (a) Portfolio performance analysis
+   (b) Asset allocation review
+   (c) Risk metrics and analysis
+   (d) Market commentary and outlook
+
+7.2 Annual Review. Provider shall conduct an annual comprehensive review of Client's investment objectives and portfolio strategy.
+
+ARTICLE VIII - LIMITATION OF LIABILITY
+
+8.1 Standard of Care. Provider shall exercise the care, skill, prudence, and diligence under the circumstances then prevailing that a prudent person acting in a like capacity and familiar with such matters would use.
+
+8.2 Limitation of Liability. Provider's liability to Client shall be limited to the amount of advisory fees paid by Client in the twelve (12) months preceding any claim, except in cases of gross negligence or willful misconduct.
+
+8.3 Indemnification. Client shall indemnify and hold harmless Provider from and against any claims arising from Client's breach of this Agreement.
+
+ARTICLE IX - MISCELLANEOUS
+
+9.1 Governing Law. This Agreement shall be governed by and construed in accordance with the laws of the State of New York.
+
+9.2 Dispute Resolution. Any disputes arising under this Agreement shall be resolved through binding arbitration in New York, New York, in accordance with the rules of the American Arbitration Association.
+
+9.3 Entire Agreement. This Agreement constitutes the entire understanding between the parties and supersedes all prior agreements and understandings.
+
+9.4 Amendments. This Agreement may be amended only by written agreement signed by both parties.
+
+9.5 Notices. All notices shall be in writing and delivered to the addresses set forth above or to such other addresses as the parties may designate in writing.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement as of the Effective Date.
+
+Global Financial Services, Inc.
+
+By: _________________________
+Name: Sarah M. Johnson
+Title: Chief Executive Officer
+Date: January 15, 2024
+
+Global Investment Partners, LLC
+
+By: _________________________
+Name: Michael R. Chen
+Title: Managing Director
+Date: January 15, 2024
+
+SCHEDULE A - INVESTMENT OBJECTIVES AND RISK PARAMETERS
+[To be attached]
+
+SCHEDULE B - INVESTMENT GUIDELINES
+[To be attached]`,
+          entities: [
+        { id: '1', text: 'Global Financial Services, Inc.', type: 'ORGANIZATION', start: 200, end: 230, confidence: 0.95, metadata: { industry: 'Financial Services', jurisdiction: 'Delaware' } },
+        { id: '2', text: 'Global Investment Partners, LLC', type: 'ORGANIZATION', start: 280, end: 315, confidence: 0.93, metadata: { industry: 'Investment Management', jurisdiction: 'New York' } },
+        { id: '3', text: 'January 15, 2024', type: 'DATE', start: 130, end: 145, confidence: 0.98, metadata: { dateType: 'Effective Date', format: 'MM/DD/YYYY' } },
+        { id: '4', text: '$300,000', type: 'MONEY', start: 1200, end: 1209, confidence: 0.96, metadata: { currency: 'USD', frequency: 'Annual', type: 'Advisory Fee' } },
+        { id: '5', text: '$25,000', type: 'MONEY', start: 1210, end: 1218, confidence: 0.96, metadata: { currency: 'USD', frequency: 'Monthly', type: 'Installment' } },
+        { id: '6', text: 'three (3) years', type: 'CONTRACT_TERM', start: 800, end: 815, confidence: 0.89, metadata: { termType: 'Duration', value: '3 years' } },
+        { id: '7', text: 'thirty (30) days', type: 'CONTRACT_TERM', start: 850, end: 865, confidence: 0.91, metadata: { termType: 'Notice Period', value: '30 days' } },
+        { id: '8', text: 'Securities and Exchange Commission', type: 'COMPLIANCE_ITEM', start: 1800, end: 1835, confidence: 0.87, metadata: { regulator: 'SEC', jurisdiction: 'Federal', requirement: 'Registration' } },
+        { id: '9', text: 'Investment Advisers Act of 1940', type: 'COMPLIANCE_ITEM', start: 1840, end: 1870, confidence: 0.92, metadata: { regulation: 'Investment Advisers Act', year: '1940', scope: 'Federal' } },
+        { id: '10', text: 'Sarah M. Johnson', type: 'PERSON', start: 3200, end: 3215, confidence: 0.94, metadata: { role: 'CEO', organization: 'Global Financial Services', signature: 'Authorized' } },
+        { id: '11', text: 'Michael R. Chen', type: 'PERSON', start: 3300, end: 3315, confidence: 0.94, metadata: { role: 'Managing Director', organization: 'Global Investment Partners', signature: 'Authorized' } },
+        { id: '12', text: 'Chief Executive Officer', type: 'CONTRACT_TERM', start: 3220, end: 3245, confidence: 0.88, metadata: { titleType: 'Executive', level: 'C-Suite' } },
+        { id: '13', text: 'Managing Director', type: 'CONTRACT_TERM', start: 3320, end: 3338, confidence: 0.88, metadata: { titleType: 'Executive', level: 'Senior Management' } },
+        { id: '14', text: 'FSA-2024-0015', type: 'CONTRACT_TERM', start: 110, end: 125, confidence: 0.97, metadata: { documentType: 'Agreement Number', year: '2024', sequence: '0015' } },
+        { id: '15', text: '123 Wall Street, Suite 1500, New York, NY 10001', type: 'LOCATION', start: 240, end: 280, confidence: 0.96, metadata: { addressType: 'Business Address', city: 'New York', state: 'NY', zip: '10001' } },
+        { id: '16', text: '456 Park Avenue, 25th Floor, New York, NY 10022', type: 'LOCATION', start: 320, end: 360, confidence: 0.95, metadata: { addressType: 'Business Address', city: 'New York', state: 'NY', zip: '10022' } },
+        { id: '17', text: 'portfolio management and asset allocation strategies', type: 'CONTRACT_TERM', start: 800, end: 850, confidence: 0.91, metadata: { serviceType: 'Investment Management', category: 'Core Services' } },
+        { id: '18', text: 'Gramm-Leach-Bliley Act', type: 'COMPLIANCE_ITEM', start: 1900, end: 1925, confidence: 0.89, metadata: { regulation: 'GLBA', year: '1999', focus: 'Privacy Protection' } },
+        { id: '19', text: 'Regulation S-P', type: 'COMPLIANCE_ITEM', start: 1930, end: 1940, confidence: 0.87, metadata: { regulation: 'Reg S-P', focus: 'Privacy of Consumer Financial Information' } },
+        { id: '20', text: 'State of New York', type: 'LOCATION', start: 2500, end: 2515, confidence: 0.98, metadata: { jurisdiction: 'Governing Law', type: 'State Law' } }
+      ],
+          highlights: ['1', '2', '4', '5', '8', '9', '10', '11', '14'],
     metadata: {
       uploadDate: '2024-01-15T10:30:00Z',
       fileSize: '2.3 MB',
