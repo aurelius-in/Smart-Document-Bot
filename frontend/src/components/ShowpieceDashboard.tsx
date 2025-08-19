@@ -574,9 +574,6 @@ This Agreement shall be governed by the laws of the State of New York.`,
       case 'upload':
         return (
           <Box>
-            <Typography variant="h4" gutterBottom>
-              Document Upload & Processing
-            </Typography>
             <DocumentProcessingPipeline
               isProcessing={isProcessing}
               currentStep="risk"
