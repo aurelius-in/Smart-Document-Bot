@@ -39,7 +39,6 @@ import {
   Bookmark,
   BookmarkBorder,
   Share,
-  Download,
   MoreVert,
   ExpandMore,
   ExpandLess,
@@ -48,7 +47,6 @@ import {
   Link,
   ContentCopy,
   Refresh,
-  Settings,
   History,
   TrendingUp,
   Psychology,
@@ -105,6 +103,7 @@ const QAChat: React.FC<QAChatProps> = ({
   const [bookmarkedMessages, setBookmarkedMessages] = useState<Set<string>>(new Set());
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedAgent, setSelectedAgent] = useState<string>('qa');
+  const [selectedAgents, setSelectedAgents] = useState<Set<string>>(new Set(['qa']));
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const sampleQuestions = [
@@ -119,24 +118,15 @@ const QAChat: React.FC<QAChatProps> = ({
   ];
 
   const agentOptions = [
-    { value: 'qa', label: 'Q&A Agent', icon: <Help /> },
-    { value: 'classifier', label: 'Classifier Agent', icon: <Psychology /> },
-    { value: 'entity', label: 'Entity Agent', icon: <Build /> },
-    { value: 'risk', label: 'Risk Agent', icon: <Assessment /> }
+    { value: 'qa', label: 'General Questions', icon: <Help /> },
+    { value: 'classifier', label: 'Document Type Analysis', icon: <Psychology /> },
+    { value: 'entity', label: 'Entity & Names', icon: <Build /> },
+    { value: 'risk', label: 'Risk & Compliance', icon: <Assessment /> }
   ];
 
   // Mock initial messages
   useEffect(() => {
-    const initialMessages: Message[] = [
-      {
-        id: '1',
-        type: 'assistant',
-        content: `Hello! I'm your AI Document Agent for "${documentName}". I can help you understand this document by answering questions about its content, identifying key entities, assessing risks, and more. What would you like to know?`,
-        timestamp: new Date(),
-        agentUsed: 'qa',
-        confidence: 0.95
-      }
-    ];
+    const initialMessages: Message[] = [];
     setMessages(initialMessages);
     setChatHistory(initialMessages);
   }, [documentName]);
@@ -230,6 +220,20 @@ const QAChat: React.FC<QAChatProps> = ({
 
   const handleCopyMessage = (content: string) => {
     navigator.clipboard.writeText(content);
+  };
+
+  const handleAgentToggle = (agentValue: string) => {
+    const newSelectedAgents = new Set(selectedAgents);
+    if (newSelectedAgents.has(agentValue)) {
+      newSelectedAgents.delete(agentValue);
+    } else {
+      newSelectedAgents.add(agentValue);
+    }
+    setSelectedAgents(newSelectedAgents);
+    // Keep the first selected agent as the primary one for backward compatibility
+    if (newSelectedAgents.size > 0) {
+      setSelectedAgent(Array.from(newSelectedAgents)[0]);
+    }
   };
 
   const renderMessage = (message: Message) => (
@@ -362,47 +366,83 @@ const QAChat: React.FC<QAChatProps> = ({
 
   return (
     <Box height="100%" display="flex" flexDirection="column">
-      {/* Header */}
+      {/* Search Bar */}
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Box display="flex" gap={1}>
+            <TextField
+              fullWidth
+              multiline
+              maxRows={4}
+              placeholder="Ask a question about the document..."
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Tooltip title="Send">
+                      <IconButton
+                        onClick={handleSendMessage}
+                        disabled={!inputValue.trim() || isLoading}
+                      >
+                        <Send />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                )
+              }}
+            />
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Select Agent */}
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Box display="flex" alignItems="center" justifyContent="space-between">
-            <Typography variant="h6" display="flex" alignItems="center">
-              <Help sx={{ mr: 1 }} />
-              Ask Document AI
-            </Typography>
-            <Box display="flex" alignItems="center" gap={1}>
-              <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Agent</InputLabel>
-                <Select
-                  value={selectedAgent}
-                  onChange={(e) => setSelectedAgent(e.target.value)}
-                  label="Agent"
-                >
-                  {agentOptions.map((agent) => (
-                    <MenuItem key={agent.value} value={agent.value}>
-                      <Box display="flex" alignItems="center" gap={1}>
-                        {agent.icon}
-                        {agent.label}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <Tooltip title="Export Chat">
-                <IconButton onClick={onExport}>
-                  <Download />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Share">
-                <IconButton onClick={onShare}>
-                  <Share />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Settings">
-                <IconButton>
-                  <Settings />
-                </IconButton>
-              </Tooltip>
+            <Box display="flex" alignItems="center" gap={2}>
+              <Typography variant="h6" color="text.primary">
+                Select Agent
+              </Typography>
+              <Box display="flex" gap={1} flexWrap="wrap">
+                {agentOptions.map((agent) => (
+                  <Chip
+                    key={agent.value}
+                    label={agent.label}
+                    icon={agent.icon}
+                    variant={selectedAgents.has(agent.value) ? "filled" : "outlined"}
+                    color={selectedAgents.has(agent.value) ? "primary" : "default"}
+                    onClick={() => handleAgentToggle(agent.value)}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                ))}
+              </Box>
+            </Box>
+
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Hello Message Card */}
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Box display="flex" alignItems="center" gap={2}>
+            <Avatar sx={{ bgcolor: 'secondary.main', width: 48, height: 48 }}>
+              <SmartToy />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Hello! I'm your AI Document Agent
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                I can help you understand this document by answering questions about its content, identifying key entities, assessing risks, and more. What would you like to know?
+              </Typography>
             </Box>
           </Box>
         </CardContent>
@@ -476,42 +516,6 @@ const QAChat: React.FC<QAChatProps> = ({
           <div ref={messagesEndRef} />
         </Box>
       </Box>
-
-      {/* Input */}
-      <Card>
-        <CardContent>
-          <Box display="flex" gap={1}>
-            <TextField
-              fullWidth
-              multiline
-              maxRows={4}
-              placeholder="Ask a question about the document..."
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <Tooltip title="Send">
-                      <IconButton
-                        onClick={handleSendMessage}
-                        disabled={!inputValue.trim() || isLoading}
-                      >
-                        <Send />
-                      </IconButton>
-                    </Tooltip>
-                  </InputAdornment>
-                )
-              }}
-            />
-          </Box>
-        </CardContent>
-      </Card>
 
       {/* Menu */}
       <Menu
