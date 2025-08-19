@@ -154,48 +154,247 @@ const QAChat: React.FC<QAChatProps> = ({
     setInputValue('');
     setIsLoading(true);
 
+    // Check for specific healthcare questions
+    const isChiefComplaintQuestion = inputValue.toLowerCase().includes('chief complaint') && 
+                                   inputValue.toLowerCase().includes('primary symptoms');
+    const isRiskFactorsQuestion = inputValue.toLowerCase().includes('risk factors') && 
+                                 inputValue.toLowerCase().includes('current medications');
+
     // Simulate AI response
     setTimeout(() => {
-      const mockCitations: Citation[] = [
-        {
-          id: '1',
-          documentId,
-          documentName,
-          page: 1,
-          text: 'The agreement shall commence on the Effective Date and continue for a period of three (3) years unless terminated earlier in accordance with the terms herein.',
-          confidence: 0.92,
-          entityType: 'DATE',
-          start: 150,
-          end: 200
-        },
-        {
-          id: '2',
-          documentId,
-          documentName,
-          page: 2,
-          text: 'Either party may terminate this agreement with thirty (30) days written notice to the other party.',
-          confidence: 0.88,
-          entityType: 'CONTRACT_TERM',
-          start: 300,
-          end: 350
-        }
-      ];
+      let assistantMessage: Message;
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: `Based on my analysis of the document, I found several key points related to your question. The agreement has specific terms regarding duration and termination procedures. Here are the relevant details with citations from the document.`,
-        timestamp: new Date(),
-        citations: mockCitations,
-        confidence: 0.89,
-        agentUsed: selectedAgent,
-        processingTime: 2.3
-      };
+      if (isChiefComplaintQuestion) {
+        // Healthcare-specific response for chief complaint question
+        const healthcareCitations: Citation[] = [
+          {
+            id: '1',
+            documentId,
+            documentName,
+            page: 1,
+            text: 'Patient reports sharp chest pain for 3 days, radiating to left arm',
+            confidence: 0.94,
+            entityType: 'SYMPTOM',
+            start: 150,
+            end: 200
+          },
+          {
+            id: '2',
+            documentId,
+            documentName,
+            page: 2,
+            text: 'SOB with minimal exertion, denies fever or cough',
+            confidence: 0.91,
+            entityType: 'SYMPTOM',
+            start: 300,
+            end: 350
+          },
+          {
+            id: '3',
+            documentId,
+            documentName,
+            page: 3,
+            text: 'Vital signs: BP 145/95, HR 98, RR 22, O2 sat 94% on RA',
+            confidence: 0.96,
+            entityType: 'VITAL_SIGNS',
+            start: 450,
+            end: 500
+          }
+        ];
+
+        assistantMessage = {
+          id: (Date.now() + 1).toString(),
+          type: 'assistant',
+          content: `Based on my analysis of the patient's medical record, I found the following information:
+
+**Chief Complaint:** 
+The patient presents with persistent chest pain and shortness of breath for the past 3 days.
+
+**Primary Symptoms:**
+- Sharp, stabbing chest pain radiating to left arm
+- Shortness of breath, especially with exertion
+- Fatigue and general weakness
+- Mild nausea without vomiting
+- Diaphoresis (excessive sweating)
+
+**Relevant Citations:**
+• Page 1: "Patient reports sharp chest pain for 3 days, radiating to left arm"
+• Page 2: "SOB with minimal exertion, denies fever or cough"
+• Page 3: "Vital signs: BP 145/95, HR 98, RR 22, O2 sat 94% on RA"
+
+**Confidence Level:** 94%
+**Processing Time:** 1.8 seconds`,
+          timestamp: new Date(),
+          citations: healthcareCitations,
+          confidence: 0.94,
+          agentUsed: selectedAgent,
+                     processingTime: 1.8
+         };
+       } else if (isRiskFactorsQuestion) {
+         // Healthcare-specific response for risk factors and medications question
+         const riskFactorsCitations: Citation[] = [
+           {
+             id: '1',
+             documentId,
+             documentName,
+             page: 4,
+             text: 'PMH: HTN, DM2, hyperlipidemia',
+             confidence: 0.91,
+             entityType: 'MEDICAL_HISTORY',
+             start: 150,
+             end: 200
+           },
+           {
+             id: '2',
+             documentId,
+             documentName,
+             page: 5,
+             text: 'Current meds: Metformin, Lisinopril, Atorvastatin, ASA',
+             confidence: 0.89,
+             entityType: 'MEDICATION',
+             start: 300,
+             end: 350
+           },
+           {
+             id: '3',
+             documentId,
+             documentName,
+             page: 6,
+             text: 'Allergies: PCN, Sulfa',
+             confidence: 0.93,
+             entityType: 'ALLERGY',
+             start: 450,
+             end: 500
+           }
+         ];
+
+         assistantMessage = {
+           id: (Date.now() + 1).toString(),
+           type: 'assistant',
+           content: `Based on my analysis of the patient's medical record, here are the identified risk factors and current medications:
+
+**Risk Factors:**
+- Hypertension (diagnosed 2019)
+- Type 2 Diabetes Mellitus (diagnosed 2020)
+- Family history of coronary artery disease
+- Current smoker (20 pack-years)
+- Sedentary lifestyle
+- BMI: 32.4 (obese)
+
+**Current Medications:**
+- Metformin 500mg twice daily (for diabetes)
+- Lisinopril 10mg daily (for hypertension)
+- Atorvastatin 20mg daily (for cholesterol)
+- Aspirin 81mg daily (for cardiovascular protection)
+
+**Medication Allergies:**
+- Penicillin (hives)
+- Sulfa drugs (rash)
+
+**Relevant Citations:**
+• Page 4: "PMH: HTN, DM2, hyperlipidemia"
+• Page 5: "Current meds: Metformin, Lisinopril, Atorvastatin, ASA"
+• Page 6: "Allergies: PCN, Sulfa"
+
+**Confidence Level:** 91%
+**Processing Time:** 2.1 seconds`,
+           timestamp: new Date(),
+           citations: riskFactorsCitations,
+           confidence: 0.91,
+           agentUsed: selectedAgent,
+           processingTime: 2.1
+         };
+               } else {
+          // Default patient-related response for other questions
+          const patientCitations: Citation[] = [
+            {
+              id: '1',
+              documentId,
+              documentName,
+              page: 1,
+              text: 'Patient: Sarah M. Johnson, DOB: 03/15/1985, MRN: 12345678',
+              confidence: 0.95,
+              entityType: 'PATIENT_INFO',
+              start: 50,
+              end: 100
+            },
+            {
+              id: '2',
+              documentId,
+              documentName,
+              page: 2,
+              text: 'Chief Complaint: Chest pain and shortness of breath for 3 days',
+              confidence: 0.93,
+              entityType: 'CHIEF_COMPLAINT',
+              start: 200,
+              end: 250
+            },
+            {
+              id: '3',
+              documentId,
+              documentName,
+              page: 3,
+              text: 'Assessment: Acute coronary syndrome, rule out myocardial infarction',
+              confidence: 0.91,
+              entityType: 'ASSESSMENT',
+              start: 350,
+              end: 400
+            }
+          ];
+
+          assistantMessage = {
+            id: (Date.now() + 1).toString(),
+            type: 'assistant',
+            content: `Based on my analysis of the patient's medical record, I can provide you with comprehensive information about this case:
+
+**Patient Information:**
+- **Name:** Sarah M. Johnson
+- **Date of Birth:** March 15, 1985
+- **Medical Record Number:** 12345678
+- **Date of Visit:** January 15, 2024
+
+**Clinical Summary:**
+The patient presents with acute onset chest pain and shortness of breath, raising concerns for potential cardiac etiology. The symptoms have been present for 3 days with progressive worsening.
+
+**Key Clinical Findings:**
+- **Vital Signs:** BP 145/95, HR 98, RR 22, O2 sat 94% on room air
+- **Physical Exam:** No acute distress, normal heart sounds, clear lungs
+- **ECG:** Sinus rhythm with non-specific ST changes
+- **Labs:** Troponin pending, CBC and CMP within normal limits
+
+**Differential Diagnosis:**
+1. Acute coronary syndrome
+2. Stable angina
+3. Gastroesophageal reflux disease
+4. Musculoskeletal chest pain
+5. Anxiety-related symptoms
+
+**Treatment Plan:**
+- Cardiac monitoring
+- Serial troponins
+- Cardiology consultation
+- Aspirin 325mg given
+- Nitroglycerin as needed for chest pain
+
+**Relevant Citations:**
+• Page 1: "Patient: Sarah M. Johnson, DOB: 03/15/1985, MRN: 12345678"
+• Page 2: "Chief Complaint: Chest pain and shortness of breath for 3 days"
+• Page 3: "Assessment: Acute coronary syndrome, rule out myocardial infarction"
+
+**Confidence Level:** 92%
+**Processing Time:** 2.4 seconds`,
+            timestamp: new Date(),
+            citations: patientCitations,
+            confidence: 0.92,
+            agentUsed: selectedAgent,
+            processingTime: 2.4
+          };
+        }
 
       setMessages(prev => [...prev, assistantMessage]);
       setChatHistory(prev => [...prev, assistantMessage]);
       setIsLoading(false);
-    }, 2000);
+         }, 5000);
   };
 
   const handleSampleQuestionClick = (question: string) => {
@@ -277,9 +476,59 @@ const QAChat: React.FC<QAChatProps> = ({
               position: 'relative'
             }}
           >
-            <Typography variant="body1" gutterBottom>
-              {message.content}
-            </Typography>
+                         <Box>
+               {message.content.split('\n').map((line, index) => {
+                 if (line.trim() === '') {
+                   return <Box key={index} height={8} />;
+                 }
+                                   if (line.startsWith('**') && line.endsWith('**')) {
+                    return (
+                      <Typography key={index} variant="h6" sx={{ mt: 2, mb: 1, fontWeight: 600, color: 'primary.main' }}>
+                        {line.replace(/\*\*/g, '')}
+                      </Typography>
+                    );
+                  }
+                  if (line.includes('**') && !line.startsWith('**') && !line.endsWith('**')) {
+                    // Handle inline bold text like "**Name:** Sarah M. Johnson"
+                    const parts = line.split('**');
+                    return (
+                      <Typography key={index} variant="body1" sx={{ mb: 1, fontSize: '1.2rem', lineHeight: 1.6 }}>
+                        {parts.map((part, partIndex) => 
+                          partIndex % 2 === 1 ? 
+                            <span key={partIndex} style={{ fontWeight: 600, color: 'primary.main' }}>{part}</span> : 
+                            part
+                        )}
+                      </Typography>
+                    );
+                  }
+                                   if (line.startsWith('- ')) {
+                    return (
+                      <Typography key={index} variant="body1" sx={{ ml: 2, mb: 0.5, fontSize: '1.2rem', lineHeight: 1.6 }}>
+                        • {line.substring(2)}
+                      </Typography>
+                    );
+                  }
+                                   if (line.startsWith('• ')) {
+                    return (
+                      <Typography key={index} variant="body2" sx={{ ml: 2, mb: 0.5, color: 'text.secondary', fontSize: '1.1rem', lineHeight: 1.5 }}>
+                        {line}
+                      </Typography>
+                    );
+                  }
+                                   if (line.match(/^\d+\./)) {
+                    return (
+                      <Typography key={index} variant="body1" sx={{ ml: 2, mb: 0.5, fontSize: '1.2rem', lineHeight: 1.6 }}>
+                        {line}
+                      </Typography>
+                    );
+                  }
+                                   return (
+                    <Typography key={index} variant="body1" sx={{ mb: 1, fontSize: '1.2rem', lineHeight: 1.6 }}>
+                      {line}
+                    </Typography>
+                  );
+               })}
+             </Box>
 
             {/* Citations */}
             {message.citations && message.citations.length > 0 && (
@@ -331,33 +580,7 @@ const QAChat: React.FC<QAChatProps> = ({
               )}
             </Box>
 
-            {/* Message actions */}
-            <Box
-              position="absolute"
-              top={8}
-              right={8}
-              sx={{ opacity: 0, transition: 'opacity 0.2s' }}
-              className="message-actions"
-            >
-              <IconButton
-                size="small"
-                onClick={() => handleBookmarkToggle(message.id)}
-              >
-                {bookmarkedMessages.has(message.id) ? <Bookmark /> : <BookmarkBorder />}
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={() => handleCopyMessage(message.content)}
-              >
-                <ContentCopy />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={(e) => setAnchorEl(e.currentTarget)}
-              >
-                <MoreVert />
-              </IconButton>
-            </Box>
+
           </Paper>
         </Box>
       </Box>
@@ -370,34 +593,45 @@ const QAChat: React.FC<QAChatProps> = ({
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Box display="flex" gap={1}>
-            <TextField
-              fullWidth
-              multiline
-              maxRows={4}
-              placeholder="Ask a question about the document..."
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <Tooltip title="Send">
-                      <IconButton
-                        onClick={handleSendMessage}
-                        disabled={!inputValue.trim() || isLoading}
-                      >
-                        <Send />
-                      </IconButton>
-                    </Tooltip>
-                  </InputAdornment>
-                )
-              }}
-            />
+                         <TextField
+               fullWidth
+               multiline
+               maxRows={4}
+               placeholder="Ask a question about the document..."
+               value={inputValue}
+               onChange={(e) => setInputValue(e.target.value)}
+               onKeyPress={(e) => {
+                 if (e.key === 'Enter' && !e.shiftKey) {
+                   e.preventDefault();
+                   handleSendMessage();
+                 }
+               }}
+               sx={{
+                 '& .MuiInputBase-input::placeholder': {
+                   fontSize: '1.1rem',
+                   opacity: 0.7
+                 }
+               }}
+               InputProps={{
+                 startAdornment: (
+                   <InputAdornment position="start">
+                     <Search sx={{ color: 'text.secondary', mr: 1 }} />
+                   </InputAdornment>
+                 ),
+                 endAdornment: (
+                   <InputAdornment position="end">
+                     <Tooltip title="Send">
+                       <IconButton
+                         onClick={handleSendMessage}
+                         disabled={!inputValue.trim() || isLoading}
+                       >
+                         <Send />
+                       </IconButton>
+                     </Tooltip>
+                   </InputAdornment>
+                 )
+               }}
+             />
           </Box>
         </CardContent>
       </Card>
@@ -437,46 +671,16 @@ const QAChat: React.FC<QAChatProps> = ({
               <SmartToy />
             </Avatar>
             <Box>
-              <Typography variant="h6" gutterBottom>
-                Hello! I'm your AI Document Agent
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                I can help you understand this document by answering questions about its content, identifying key entities, assessing risks, and more. What would you like to know?
-              </Typography>
+                             <Typography variant="h6" gutterBottom>
+                 Hello! I'm aiDa Chat.
+               </Typography>
+                             <Typography variant="h6" color="text.secondary" sx={{ fontSize: '1.1rem', fontWeight: 400 }}>
+                 I can help you understand this document by answering questions about its content, identifying key entities, assessing risks, and more. What would you like to know?
+               </Typography>
             </Box>
           </Box>
         </CardContent>
       </Card>
-
-      {/* Sample Questions */}
-      {showSampleQuestions && (
-        <Card sx={{ mb: 2 }}>
-          <CardContent>
-            <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-              <Typography variant="subtitle1">
-                Suggested Questions
-              </Typography>
-              <IconButton
-                size="small"
-                onClick={() => setShowSampleQuestions(false)}
-              >
-                <ExpandLess />
-              </IconButton>
-            </Box>
-            <Box display="flex" flexWrap="wrap" gap={1}>
-              {sampleQuestions.map((question, index) => (
-                <Chip
-                  key={index}
-                  label={question}
-                  variant="outlined"
-                  onClick={() => handleSampleQuestionClick(question)}
-                  sx={{ cursor: 'pointer' }}
-                />
-              ))}
-            </Box>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Messages */}
       <Box
@@ -516,6 +720,36 @@ const QAChat: React.FC<QAChatProps> = ({
           <div ref={messagesEndRef} />
         </Box>
       </Box>
+
+      {/* Sample Questions */}
+      {showSampleQuestions && (
+        <Card sx={{ mb: 2 }}>
+          <CardContent>
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                             <Typography variant="h6" sx={{ fontSize: '1.1rem', fontWeight: 500 }}>
+                 Suggested Questions
+               </Typography>
+              <IconButton
+                size="small"
+                onClick={() => setShowSampleQuestions(false)}
+              >
+                <ExpandLess />
+              </IconButton>
+            </Box>
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {sampleQuestions.map((question, index) => (
+                <Chip
+                  key={index}
+                  label={question}
+                  variant="outlined"
+                  onClick={() => handleSampleQuestionClick(question)}
+                  sx={{ cursor: 'pointer' }}
+                />
+              ))}
+            </Box>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Menu */}
       <Menu

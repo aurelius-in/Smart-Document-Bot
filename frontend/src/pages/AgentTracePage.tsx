@@ -71,7 +71,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { apiService } from '../services/apiService';
-import { AgentTrace, AgentStep } from '../services/apiService';
+import { AgentTrace, AgentStep } from '../types/agent';
 
 const AgentTracePage: React.FC = () => {
   const [traces, setTraces] = useState<AgentTrace[]>([]);
@@ -325,10 +325,10 @@ const AgentTracePage: React.FC = () => {
                           secondary={
                             <Box>
                               <Typography variant="body2" color="text.secondary">
-                                {new Date(trace.createdAt).toLocaleString()}
+                                {trace.createdAt ? new Date(trace.createdAt).toLocaleString() : trace.startTime ? new Date(trace.startTime).toLocaleString() : 'N/A'}
                               </Typography>
                               <Typography variant="body2" color="text.secondary">
-                                {trace.steps?.length || 0} steps • {formatDuration(trace.duration || 0)}
+                                {trace.steps?.length || 0} steps • {formatDuration(trace.duration || trace.totalDuration || 0)}
                               </Typography>
                             </Box>
                           }
@@ -368,7 +368,7 @@ const AgentTracePage: React.FC = () => {
                         color={getStatusColor(selectedTrace.status)}
                       />
                       <Chip
-                        label={formatDuration(selectedTrace.duration || 0)}
+                        label={formatDuration(selectedTrace.duration || selectedTrace.totalDuration || 0)}
                         variant="outlined"
                         size="small"
                       />
@@ -376,7 +376,7 @@ const AgentTracePage: React.FC = () => {
                   </Box>
 
                   <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Started: {new Date(selectedTrace.createdAt).toLocaleString()}
+                    Started: {selectedTrace.createdAt ? new Date(selectedTrace.createdAt).toLocaleString() : selectedTrace.startTime ? new Date(selectedTrace.startTime).toLocaleString() : 'N/A'}
                     {selectedTrace.completedAt && (
                       <> • Completed: {new Date(selectedTrace.completedAt).toLocaleString()}</>
                     )}
@@ -398,16 +398,16 @@ const AgentTracePage: React.FC = () => {
                                   height: 40
                                 }}
                               >
-                                {getStepIcon(step.type)}
+                                {getStepIcon(step.type || step.agentType)}
                               </Avatar>
                               
                               <Box flex={1}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                                   <Typography variant="subtitle2">
-                                    {step.name}
+                                    {step.name || `Step ${step.stepNumber}`}
                                   </Typography>
                                   <Chip
-                                    label={step.type}
+                                    label={step.type || step.agentType}
                                     size="small"
                                     variant="outlined"
                                   />
@@ -421,9 +421,9 @@ const AgentTracePage: React.FC = () => {
                                 </Box>
                                 
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {step.startTime.toLocaleTimeString()}
-                                  </Typography>
+                                                                     <Typography variant="caption" color="text.secondary">
+                                     {new Date(step.startTime).toLocaleTimeString()}
+                                   </Typography>
                                   {step.duration && (
                                     <Typography variant="caption" color="text.secondary">
                                       {formatDuration(step.duration)}
@@ -438,7 +438,7 @@ const AgentTracePage: React.FC = () => {
                             </Box>
 
                             <Typography variant="body2" color="text.secondary" gutterBottom>
-                              {step.rationale}
+                              {step.rationale || `Step ${step.stepNumber} using ${step.agentType}`}
                             </Typography>
 
                             <Accordion>
@@ -536,7 +536,7 @@ const AgentTracePage: React.FC = () => {
                     Duration
                   </Typography>
                   <Typography variant="body1">
-                    {formatDuration(selectedTraceDetails.duration || 0)}
+                    {formatDuration(selectedTraceDetails.duration || selectedTraceDetails.totalDuration || 0)}
                   </Typography>
                 </Grid>
                 <Grid item xs={6}>
@@ -544,7 +544,7 @@ const AgentTracePage: React.FC = () => {
                     Created
                   </Typography>
                   <Typography variant="body1">
-                    {new Date(selectedTraceDetails.createdAt).toLocaleString()}
+                    {selectedTraceDetails.createdAt ? new Date(selectedTraceDetails.createdAt).toLocaleString() : selectedTraceDetails.startTime ? new Date(selectedTraceDetails.startTime).toLocaleString() : 'N/A'}
                   </Typography>
                 </Grid>
                 {selectedTraceDetails.completedAt && (
@@ -575,9 +575,9 @@ const AgentTracePage: React.FC = () => {
                             primary={
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Typography variant="subtitle1">
-                                  {step.name}
+                                  {step.name || `Step ${step.stepNumber}`}
                                 </Typography>
-                                <Chip label={step.type} size="small" variant="outlined" />
+                                                                  <Chip label={step.type || step.agentType} size="small" variant="outlined" />
                                 {step.duration && (
                                   <Chip label={formatDuration(step.duration)} size="small" variant="outlined" />
                                 )}
