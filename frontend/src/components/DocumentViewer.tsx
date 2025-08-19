@@ -189,7 +189,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
                   border: isSelected ? `2px solid ${entityColors[part.entity.type]}` : 'none',
                   position: 'relative'
                 }}
-                onMouseEnter={() => setSelectedEntity(part.entity)}
+                onMouseEnter={() => setSelectedEntity(part.entity || null)}
                 onMouseLeave={() => setSelectedEntity(null)}
                 onClick={() => onEntityClick?.(part.entity!)}
               >
@@ -331,7 +331,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>
-              Document Analysis
+              AI Document Agent - Document Analysis
             </Typography>
 
             <Tabs

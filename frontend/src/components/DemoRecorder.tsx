@@ -315,11 +315,10 @@ const DemoRecorder: React.FC<DemoRecorderProps> = ({
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
-          mediaSource: 'screen',
           width: { ideal: 1920 },
           height: { ideal: 1080 }
         },
-        audio: recordingSettings.includeAudio
+        audio: false
       });
 
       const mediaRecorder = new MediaRecorder(stream, {

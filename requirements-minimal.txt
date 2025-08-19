@@ -1,0 +1,13 @@
+# Core FastAPI & Web Framework
+fastapi==0.110.0
+uvicorn==0.29.0
+pydantic==2.6.4
+python-multipart==0.0.9
+
+# Basic utilities
+python-dotenv==1.0.0
+httpx==0.26.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1

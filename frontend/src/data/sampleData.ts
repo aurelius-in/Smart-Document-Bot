@@ -1,4 +1,4 @@
-// Sample data for the Smart Document Bot showpiece
+// Sample data for the AI Document Agent showpiece
 
 export interface SampleDocument {
   id: string;

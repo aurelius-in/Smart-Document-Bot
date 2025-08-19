@@ -183,10 +183,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       {
         label: 'Accuracy (%)',
         data: [96, 94, 89, 92, 91, 95, 93, 88, 90],
-        backgroundColor: [
-          '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107',
-          '#FF9800', '#FF5722', '#E91E63', '#9C27B0'
-        ]
+        backgroundColor: '#4CAF50'
       }
     ]
   };
@@ -197,9 +194,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       {
         label: 'Compliance Rate (%)',
         data: [98.5, 97.2, 96.8, 95.4, 99.1, 94.7],
-        backgroundColor: [
-          '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107', '#FF9800'
-        ]
+        backgroundColor: '#8BC34A'
       }
     ]
   };
@@ -361,9 +356,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     <Box>
       {/* Header */}
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
-        <Typography variant="h4" display="flex" alignItems="center">
-          <Analytics sx={{ mr: 1 }} />
-          Analytics Dashboard
+        <Typography variant="h5" component="h2" gutterBottom>
+          AI Document Agent Analytics
         </Typography>
         <Box display="flex" alignItems="center" gap={2}>
           <FormControlLabel

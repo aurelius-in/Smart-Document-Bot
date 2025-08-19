@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     """Application settings"""
     
     # Application settings
-    APP_NAME: str = "Smart Document Bot"
+    APP_NAME: str = "AI Document Agent"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = Field(default=False, env="DEBUG")
     HOST: str = Field(default="0.0.0.0", env="HOST")

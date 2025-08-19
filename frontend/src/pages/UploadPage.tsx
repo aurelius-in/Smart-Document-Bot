@@ -184,7 +184,7 @@ const UploadPage: React.FC = () => {
       case 'error':
         return <ErrorIcon color="error" />;
       case 'processing':
-        return <LinearProgress size={20} />;
+        return <LinearProgress />;
       default:
         return null;
     }
@@ -202,7 +202,7 @@ const UploadPage: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        Upload & Pipeline
+        AI Document Agent - Upload & Process
       </Typography>
 
       <Grid container spacing={3}>

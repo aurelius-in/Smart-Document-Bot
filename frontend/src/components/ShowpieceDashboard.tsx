@@ -384,7 +384,7 @@ This Agreement shall be governed by the laws of the State of New York.`,
         return (
           <Box>
             <Typography variant="h4" gutterBottom>
-              Smart Document Bot - Showpiece Dashboard
+              AI Document Agent - Showpiece Dashboard
             </Typography>
             <Typography variant="body1" color="text.secondary" paragraph>
               Welcome to the fully agentic document processing system. This demo showcases the complete capabilities
@@ -462,7 +462,7 @@ This Agreement shall be governed by the laws of the State of New York.`,
               documentId={currentDocument.id}
               documentName={currentDocument.name}
               documentContent={currentDocument.content}
-              entities={currentDocument.entities}
+              entities={currentDocument.entities as any}
               highlights={currentDocument.highlights}
               onEntityClick={(entity) => console.log('Entity clicked:', entity)}
               onHighlightToggle={(entity) => console.log('Highlight toggled:', entity)}
@@ -557,7 +557,7 @@ This Agreement shall be governed by the laws of the State of New York.`,
           </IconButton>
           
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Smart Document Bot - Showpiece
+            AI Document Agent - Showpiece
           </Typography>
           
           <Box display="flex" alignItems="center" gap={1}>
@@ -622,6 +622,21 @@ This Agreement shall be governed by the laws of the State of New York.`,
           overflow: 'auto'
         }}
       >
+        <Box sx={{ 
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: 'white',
+          p: 3,
+          borderRadius: 2,
+          mb: 3
+        }}>
+          <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
+            AI Document Agent
+          </Typography>
+          <Typography variant="h6" sx={{ opacity: 0.9 }}>
+            Intelligent Document Processing & Analysis Platform
+          </Typography>
+        </Box>
+
         {/* Demo Control Bar */}
         <DemoControlBar
           onScenarioChange={handleScenarioChange}

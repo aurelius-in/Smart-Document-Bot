@@ -27,13 +27,8 @@ import {
   FormControlLabel,
   LinearProgress,
   Badge,
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent
+  Collapse,
+  Avatar
 } from '@mui/material';
 import {
   PlayArrow,
@@ -281,9 +276,8 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
       <Card>
         <CardContent>
           <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-            <Typography variant="h6" display="flex" alignItems="center">
-              <TimelineIcon sx={{ mr: 1 }} />
-              Agent Trace Visualization
+            <Typography variant="h6" gutterBottom>
+              AI Document Agent - Execution Trace
             </Typography>
             <Box display="flex" alignItems="center" gap={1}>
               <Chip
@@ -324,8 +318,8 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
             </Box>
           </Box>
 
-          {/* Timeline View */}
-          <Timeline>
+          {/* Timeline View - Replaced with List */}
+          <List>
             {steps.map((step, index) => (
               <motion.div
                 key={step.id}
@@ -333,42 +327,43 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.1 * animationSpeed }}
               >
-                <TimelineItem>
-                  <TimelineOppositeContent sx={{ m: 'auto 0' }} variant="body2" color="text.secondary">
-                    {step.startTime.toLocaleTimeString()}
-                    {step.duration && (
-                      <Typography variant="caption" display="block">
-                        {formatDuration(step.duration)}
-                      </Typography>
-                    )}
-                  </TimelineOppositeContent>
-                  <TimelineSeparator>
-                    <TimelineDot
-                      color={getStatusColor(step.status)}
-                      sx={{
-                        backgroundColor: step.status === 'running' ? 'primary.main' : undefined
-                      }}
-                    >
-                      {getAgentIcon(step.agentType)}
-                    </TimelineDot>
-                    {index < steps.length - 1 && <TimelineConnector />}
-                  </TimelineSeparator>
-                  <TimelineContent>
-                    <Paper
-                      elevation={selectedStep?.id === step.id ? 4 : 1}
-                      sx={{
-                        p: 2,
-                        cursor: 'pointer',
-                        border: selectedStep?.id === step.id ? 2 : 1,
-                        borderColor: selectedStep?.id === step.id ? 'primary.main' : 'divider',
-                        '&:hover': {
-                          elevation: 2
-                        }
-                      }}
-                      onClick={() => handleStepClick(step)}
-                    >
-                      <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                        <Box display="flex" alignItems="center" gap={1}>
+                <ListItem
+                  sx={{
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
+                    p: 0,
+                    mb: 2
+                  }}
+                >
+                  <Paper
+                    elevation={selectedStep?.id === step.id ? 4 : 1}
+                    sx={{
+                      p: 2,
+                      cursor: 'pointer',
+                      border: selectedStep?.id === step.id ? 2 : 1,
+                      borderColor: selectedStep?.id === step.id ? 'primary.main' : 'divider',
+                      '&:hover': {
+                        elevation: 2
+                      }
+                    }}
+                    onClick={() => handleStepClick(step)}
+                  >
+                    <Box display="flex" alignItems="center" gap={2} mb={1}>
+                      <Avatar
+                        sx={{
+                          bgcolor: getStatusColor(step.status) === 'success' ? 'success.main' :
+                                   getStatusColor(step.status) === 'error' ? 'error.main' :
+                                   getStatusColor(step.status) === 'warning' ? 'warning.main' :
+                                   'primary.main',
+                          width: 40,
+                          height: 40
+                        }}
+                      >
+                        {getAgentIcon(step.agentType)}
+                      </Avatar>
+                      
+                      <Box flex={1}>
+                        <Box display="flex" alignItems="center" gap={1} mb={0.5}>
                           <Typography variant="subtitle1">
                             {step.agentName}
                           </Typography>
@@ -379,156 +374,168 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
                           />
                           <Chip
                             label={step.status}
-                            color={getStatusColor(step.status)}
+                            color={getStatusColor(step.status) as any}
                             size="small"
                           />
                         </Box>
-                        <Box display="flex" alignItems="center" gap={1}>
-                          {getStatusIcon(step.status)}
-                          {step.status === 'running' && (
-                            <motion.div
-                              animate={{ rotate: 360 }}
-                              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                            >
-                              <Schedule />
-                            </motion.div>
+                        
+                        <Box display="flex" alignItems="center" gap={2}>
+                          <Typography variant="caption" color="text.secondary">
+                            {step.startTime.toLocaleTimeString()}
+                          </Typography>
+                          {step.duration && (
+                            <Typography variant="caption" color="text.secondary">
+                              {formatDuration(step.duration)}
+                            </Typography>
                           )}
-                          <IconButton
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStepExpand(step.id);
-                            }}
-                          >
-                            {expandedSteps.has(step.id) ? <ExpandLess /> : <ExpandMore />}
-                          </IconButton>
                         </Box>
                       </Box>
-
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
-                        {step.rationale}
-                      </Typography>
-
-                      <Box display="flex" alignItems="center" gap={2} mb={1}>
-                        <Typography variant="caption">Confidence:</Typography>
-                        {renderConfidenceGauge(step.confidence)}
-                      </Box>
-
-                      {/* Action Buttons */}
-                      <Box display="flex" gap={1} mb={1}>
-                        <Button
-                          size="small"
-                          startIcon={<Refresh />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRerunStep(step);
-                          }}
-                          disabled={step.status === 'running'}
-                        >
-                          Re-run
-                        </Button>
-                        <Button
-                          size="small"
-                          startIcon={<Settings />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleWhatIf(step);
-                          }}
-                          disabled={step.status === 'running'}
-                        >
-                          What-if
-                        </Button>
-                      </Box>
-
-                      {/* Expanded Details */}
-                      <Collapse in={expandedSteps.has(step.id)}>
-                        <Divider sx={{ my: 1 }} />
-                        
-                        {/* Tool Calls */}
-                        {showToolCalls && step.toolCalls.length > 0 && (
-                          <Box mb={2}>
-                            <Typography variant="subtitle2" gutterBottom>
-                              Tool Calls ({step.toolCalls.length})
-                            </Typography>
-                            {renderToolCalls(step.toolCalls)}
-                          </Box>
+                      
+                      <Box display="flex" alignItems="center" gap={1}>
+                        {getStatusIcon(step.status)}
+                        {step.status === 'running' && (
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                          >
+                            <Schedule />
+                          </motion.div>
                         )}
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStepExpand(step.id);
+                          }}
+                        >
+                          {expandedSteps.has(step.id) ? <ExpandLess /> : <ExpandMore />}
+                        </IconButton>
+                      </Box>
+                    </Box>
 
-                        {/* Input/Output */}
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      {step.rationale}
+                    </Typography>
+
+                    <Box display="flex" alignItems="center" gap={2} mb={1}>
+                      <Typography variant="caption">Confidence:</Typography>
+                      {renderConfidenceGauge(step.confidence)}
+                    </Box>
+
+                    {/* Action Buttons */}
+                    <Box display="flex" gap={1} mb={1}>
+                      <Button
+                        size="small"
+                        startIcon={<Refresh />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRerunStep(step);
+                        }}
+                        disabled={step.status === 'running'}
+                      >
+                        Re-run
+                      </Button>
+                      <Button
+                        size="small"
+                        startIcon={<Settings />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleWhatIf(step);
+                        }}
+                        disabled={step.status === 'running'}
+                      >
+                        What-if
+                      </Button>
+                    </Box>
+
+                    {/* Expanded Details */}
+                    <Collapse in={expandedSteps.has(step.id)}>
+                      <Divider sx={{ my: 1 }} />
+                      
+                      {/* Tool Calls */}
+                      {showToolCalls && step.toolCalls.length > 0 && (
                         <Box mb={2}>
                           <Typography variant="subtitle2" gutterBottom>
-                            Input/Output
+                            Tool Calls ({step.toolCalls.length})
                           </Typography>
-                          <Box display="flex" gap={2}>
-                            <Box flex={1}>
-                              <Typography variant="caption" color="text.secondary">
-                                Input:
-                              </Typography>
-                              <Paper
-                                variant="outlined"
-                                sx={{ p: 1, mt: 0.5, backgroundColor: 'grey.50' }}
-                              >
-                                <Typography variant="caption" fontFamily="monospace">
-                                  {JSON.stringify(step.input, null, 2)}
-                                </Typography>
-                              </Paper>
-                            </Box>
-                            <Box flex={1}>
-                              <Typography variant="caption" color="text.secondary">
-                                Output:
-                              </Typography>
-                              <Paper
-                                variant="outlined"
-                                sx={{ p: 1, mt: 0.5, backgroundColor: 'grey.50' }}
-                              >
-                                <Typography variant="caption" fontFamily="monospace">
-                                  {JSON.stringify(step.output, null, 2)}
-                                </Typography>
-                              </Paper>
-                            </Box>
-                          </Box>
+                          {renderToolCalls(step.toolCalls)}
                         </Box>
+                      )}
 
-                        {/* Metadata */}
-                        {showMetadata && Object.keys(step.metadata).length > 0 && (
-                          <Box>
-                            <Typography variant="subtitle2" gutterBottom>
-                              Metadata
+                      {/* Input/Output */}
+                      <Box mb={2}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Input/Output
+                        </Typography>
+                        <Box display="flex" gap={2}>
+                          <Box flex={1}>
+                            <Typography variant="caption" color="text.secondary">
+                              Input:
                             </Typography>
                             <Paper
                               variant="outlined"
-                              sx={{ p: 1, backgroundColor: 'grey.50' }}
+                              sx={{ p: 1, mt: 0.5, backgroundColor: 'grey.50' }}
                             >
                               <Typography variant="caption" fontFamily="monospace">
-                                {JSON.stringify(step.metadata, null, 2)}
+                                {JSON.stringify(step.input, null, 2)}
                               </Typography>
                             </Paper>
                           </Box>
-                        )}
-
-                        {/* Error Details */}
-                        {step.error && (
-                          <Box mt={2}>
-                            <Typography variant="subtitle2" color="error" gutterBottom>
-                              Error Details
+                          <Box flex={1}>
+                            <Typography variant="caption" color="text.secondary">
+                              Output:
                             </Typography>
                             <Paper
                               variant="outlined"
-                              sx={{ p: 1, backgroundColor: 'error.light' }}
+                              sx={{ p: 1, mt: 0.5, backgroundColor: 'grey.50' }}
                             >
-                              <Typography variant="caption" color="error">
-                                {step.error}
+                              <Typography variant="caption" fontFamily="monospace">
+                                {JSON.stringify(step.output, null, 2)}
                               </Typography>
                             </Paper>
                           </Box>
-                        )}
-                      </Collapse>
-                    </Paper>
-                  </TimelineContent>
-                </TimelineItem>
+                        </Box>
+                      </Box>
+
+                      {/* Metadata */}
+                      {showMetadata && Object.keys(step.metadata).length > 0 && (
+                        <Box>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Metadata
+                          </Typography>
+                          <Paper
+                            variant="outlined"
+                            sx={{ p: 1, backgroundColor: 'grey.50' }}
+                          >
+                            <Typography variant="caption" fontFamily="monospace">
+                              {JSON.stringify(step.metadata, null, 2)}
+                            </Typography>
+                          </Paper>
+                        </Box>
+                      )}
+
+                      {/* Error Details */}
+                      {step.error && (
+                        <Box mt={2}>
+                          <Typography variant="subtitle2" color="error" gutterBottom>
+                            Error Details
+                          </Typography>
+                          <Paper
+                            variant="outlined"
+                            sx={{ p: 1, backgroundColor: 'error.light' }}
+                          >
+                            <Typography variant="caption" color="error">
+                              {step.error}
+                            </Typography>
+                          </Paper>
+                        </Box>
+                      )}
+                    </Collapse>
+                  </Paper>
+                </ListItem>
               </motion.div>
             ))}
-          </Timeline>
+          </List>
 
           {/* Summary Stats */}
           <Box mt={3} p={2} bgcolor="grey.50" borderRadius={1}>
