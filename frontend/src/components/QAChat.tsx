@@ -207,23 +207,23 @@ const QAChat: React.FC<QAChatProps> = ({
           type: 'assistant',
           content: `Based on my analysis of the patient's medical record, I found the following information:
 
-**Chief Complaint:** 
+Chief Complaint: 
 The patient presents with persistent chest pain and shortness of breath for the past 3 days.
 
-**Primary Symptoms:**
+Primary Symptoms:
 - Sharp, stabbing chest pain radiating to left arm
 - Shortness of breath, especially with exertion
 - Fatigue and general weakness
 - Mild nausea without vomiting
 - Diaphoresis (excessive sweating)
 
-**Relevant Citations:**
+Relevant Citations:
 • Page 1: "Patient reports sharp chest pain for 3 days, radiating to left arm"
 • Page 2: "SOB with minimal exertion, denies fever or cough"
 • Page 3: "Vital signs: BP 145/95, HR 98, RR 22, O2 sat 94% on RA"
 
-**Confidence Level:** 94%
-**Processing Time:** 1.8 seconds`,
+Confidence Level: 94%
+Processing Time: 1.8 seconds`,
           timestamp: new Date(),
           citations: healthcareCitations,
           confidence: 0.94,
@@ -273,7 +273,7 @@ The patient presents with persistent chest pain and shortness of breath for the 
            type: 'assistant',
            content: `Based on my analysis of the patient's medical record, here are the identified risk factors and current medications:
 
-**Risk Factors:**
+Risk Factors:
 - Hypertension (diagnosed 2019)
 - Type 2 Diabetes Mellitus (diagnosed 2020)
 - Family history of coronary artery disease
@@ -281,22 +281,22 @@ The patient presents with persistent chest pain and shortness of breath for the 
 - Sedentary lifestyle
 - BMI: 32.4 (obese)
 
-**Current Medications:**
+Current Medications:
 - Metformin 500mg twice daily (for diabetes)
 - Lisinopril 10mg daily (for hypertension)
 - Atorvastatin 20mg daily (for cholesterol)
 - Aspirin 81mg daily (for cardiovascular protection)
 
-**Medication Allergies:**
+Medication Allergies:
 - Penicillin (hives)
 - Sulfa drugs (rash)
 
-**Relevant Citations:**
+Relevant Citations:
 • Page 4: "PMH: HTN, DM2, hyperlipidemia"
 • Page 5: "Current meds: Metformin, Lisinopril, Atorvastatin, ASA"
 • Page 6: "Allergies: PCN, Sulfa"
 
-**Confidence Level:** 91%
+Confidence Level: 91%
 **Processing Time:** 2.1 seconds`,
            timestamp: new Date(),
            citations: riskFactorsCitations,
@@ -347,42 +347,42 @@ The patient presents with persistent chest pain and shortness of breath for the 
             type: 'assistant',
             content: `Based on my analysis of the patient's medical record, I can provide you with comprehensive information about this case:
 
-**Patient Information:**
-- **Name:** Sarah M. Johnson
-- **Date of Birth:** March 15, 1985
-- **Medical Record Number:** 12345678
-- **Date of Visit:** January 15, 2024
+Patient Information:
+- Name: Sarah M. Johnson
+- Date of Birth: March 15, 1985
+- Medical Record Number: 12345678
+- Date of Visit: January 15, 2024
 
-**Clinical Summary:**
+Clinical Summary:
 The patient presents with acute onset chest pain and shortness of breath, raising concerns for potential cardiac etiology. The symptoms have been present for 3 days with progressive worsening.
 
-**Key Clinical Findings:**
-- **Vital Signs:** BP 145/95, HR 98, RR 22, O2 sat 94% on room air
-- **Physical Exam:** No acute distress, normal heart sounds, clear lungs
-- **ECG:** Sinus rhythm with non-specific ST changes
-- **Labs:** Troponin pending, CBC and CMP within normal limits
+Key Clinical Findings:
+- Vital Signs: BP 145/95, HR 98, RR 22, O2 sat 94% on room air
+- Physical Exam: No acute distress, normal heart sounds, clear lungs
+- ECG: Sinus rhythm with non-specific ST changes
+- Labs: Troponin pending, CBC and CMP within normal limits
 
-**Differential Diagnosis:**
+Differential Diagnosis:
 1. Acute coronary syndrome
 2. Stable angina
 3. Gastroesophageal reflux disease
 4. Musculoskeletal chest pain
 5. Anxiety-related symptoms
 
-**Treatment Plan:**
+Treatment Plan:
 - Cardiac monitoring
 - Serial troponins
 - Cardiology consultation
 - Aspirin 325mg given
 - Nitroglycerin as needed for chest pain
 
-**Relevant Citations:**
+Relevant Citations:
 • Page 1: "Patient: Sarah M. Johnson, DOB: 03/15/1985, MRN: 12345678"
 • Page 2: "Chief Complaint: Chest pain and shortness of breath for 3 days"
 • Page 3: "Assessment: Acute coronary syndrome, rule out myocardial infarction"
 
-**Confidence Level:** 92%
-**Processing Time:** 2.4 seconds`,
+Confidence Level: 92%
+Processing Time: 2.4 seconds`,
             timestamp: new Date(),
             citations: patientCitations,
             confidence: 0.92,
