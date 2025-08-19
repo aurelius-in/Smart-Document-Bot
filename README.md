@@ -6,6 +6,8 @@ An intelligent document processing and analysis platform powered by AI agents fo
 
 AI Document Agent is a comprehensive platform that leverages multiple AI agents to process, analyze, and extract insights from regulatory documents. The system provides real-time document processing, entity extraction, risk assessment, and compliance monitoring capabilities.
 
+![aiDa Dashboard Demo](tab1.gif)
+
 ## Features
 
 - **Multi-Agent Processing**: Orchestrated AI agents for document ingestion, classification, entity extraction, and analysis

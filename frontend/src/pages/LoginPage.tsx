@@ -66,17 +66,17 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  const handleDemoLogin = async () => {
+  const handleQuickLogin = async () => {
     setIsLoading(true);
     setError('');
 
     try {
       await login('admin', 'password');
-      toast.success('Demo login successful!');
+      toast.success('Quick login successful!');
       navigate('/dashboard');
     } catch (error) {
-      setError('Demo login failed');
-      toast.error('Demo login failed');
+      setError('Quick login failed');
+      toast.error('Quick login failed');
     } finally {
       setIsLoading(false);
     }
@@ -223,7 +223,7 @@ const LoginPage: React.FC = () => {
             fullWidth
             variant="outlined"
             size="large"
-            onClick={handleDemoLogin}
+            onClick={handleQuickLogin}
             disabled={isLoading}
             sx={{
               py: 1.5,
@@ -233,12 +233,12 @@ const LoginPage: React.FC = () => {
               fontWeight: 600,
             }}
           >
-            Try Demo Mode
+            Quick Access
           </Button>
 
           <Box sx={{ mt: 3, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">
-              Demo credentials: admin / password
+              Test credentials: admin / password
             </Typography>
           </Box>
 
