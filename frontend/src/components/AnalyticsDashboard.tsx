@@ -249,24 +249,429 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'grey.50',
+            backgroundColor: 'background.paper',
             borderRadius: 1,
-            border: '1px dashed',
-            borderColor: 'grey.300'
+            border: '1px solid',
+            borderColor: 'divider',
+            p: 2
           }}
         >
-          <Box textAlign="center">
-            {chartType === 'line' && <ShowChart sx={{ fontSize: 48, color: 'grey.400' }} />}
-            {chartType === 'bar' && <BarChart sx={{ fontSize: 48, color: 'grey.400' }} />}
-            {chartType === 'pie' && <PieChart sx={{ fontSize: 48, color: 'grey.400' }} />}
-            {chartType === 'radar' && <BubbleChart sx={{ fontSize: 48, color: 'grey.400' }} />}
-            <Typography variant="body2" color="text.secondary">
-              {chartType.charAt(0).toUpperCase() + chartType.slice(1)} Chart
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Mock data visualization
-            </Typography>
-          </Box>
+                     {chartType === 'line' && (
+             <Box sx={{ width: '100%', height: '100%' }}>
+               <svg width="100%" height="100%" viewBox="0 0 400 250">
+                 <defs>
+                   <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                     <stop offset="0%" stopColor="#4CAF50" stopOpacity="0.3" />
+                     <stop offset="100%" stopColor="#4CAF50" stopOpacity="0.1" />
+                   </linearGradient>
+                 </defs>
+                 {/* Y-axis labels */}
+                 {[0, 1, 2, 3, 4].map(i => (
+                   <text
+                     key={i}
+                     x="10"
+                     y={40 + i * 40 + 5}
+                     fontSize="12"
+                     fill="#666"
+                     textAnchor="end"
+                   >
+                     {Math.round((4 - i) * 50)}
+                   </text>
+                 ))}
+                 {/* X-axis labels */}
+                 {data.labels.map((label, index) => {
+                   const x = (index / (data.labels.length - 1)) * 360 + 20;
+                   return (
+                     <text
+                       key={index}
+                       x={x}
+                       y="240"
+                       fontSize="12"
+                       fill="#666"
+                       textAnchor="middle"
+                     >
+                       {label}
+                     </text>
+                   );
+                 })}
+                 {/* Grid lines */}
+                 {[0, 1, 2, 3, 4].map(i => (
+                   <line
+                     key={i}
+                     x1="40"
+                     y1={40 + i * 40}
+                     x2="380"
+                     y2={40 + i * 40}
+                     stroke="#e0e0e0"
+                     strokeWidth="1"
+                     opacity="0.3"
+                   />
+                 ))}
+                 {/* Data line */}
+                 <path
+                   d={data.datasets[0].data.map((value, index) => {
+                     const x = (index / (data.datasets[0].data.length - 1)) * 320 + 40;
+                     const y = 200 - (value / 200) * 160 - 20;
+                     return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+                   }).join(' ')}
+                   stroke="#4CAF50"
+                   strokeWidth="3"
+                   fill="none"
+                 />
+                 {/* Area under line */}
+                 <path
+                   d={`M 40 200 ${data.datasets[0].data.map((value, index) => {
+                     const x = (index / (data.datasets[0].data.length - 1)) * 320 + 40;
+                     const y = 200 - (value / 200) * 160 - 20;
+                     return `L ${x} ${y}`;
+                   }).join(' ')} L 360 200 Z`}
+                   fill="url(#lineGradient)"
+                 />
+                 {/* Data points with values */}
+                 {data.datasets[0].data.map((value, index) => {
+                   const x = (index / (data.datasets[0].data.length - 1)) * 320 + 40;
+                   const y = 200 - (value / 200) * 160 - 20;
+                   return (
+                     <g key={index}>
+                       <circle
+                         cx={x}
+                         cy={y}
+                         r="4"
+                         fill="#4CAF50"
+                         stroke="#fff"
+                         strokeWidth="2"
+                       />
+                       <text
+                         x={x}
+                         y={y - 10}
+                         fontSize="10"
+                         fill="#4CAF50"
+                         textAnchor="middle"
+                         fontWeight="bold"
+                       >
+                         {value}
+                       </text>
+                     </g>
+                   );
+                 })}
+                 {/* Chart title */}
+                 <text
+                   x="200"
+                   y="15"
+                   fontSize="14"
+                   fill="#333"
+                   textAnchor="middle"
+                   fontWeight="bold"
+                 >
+                   {data.datasets[0].label}
+                 </text>
+               </svg>
+             </Box>
+           )}
+                     {chartType === 'bar' && (
+             <Box sx={{ width: '100%', height: '100%' }}>
+               <svg width="100%" height="100%" viewBox="0 0 400 280">
+                 {/* Y-axis labels */}
+                 {[0, 1, 2, 3, 4].map(i => (
+                   <text
+                     key={i}
+                     x="10"
+                     y={40 + i * 40 + 5}
+                     fontSize="12"
+                     fill="#666"
+                     textAnchor="end"
+                   >
+                     {Math.round((4 - i) * 25)}%
+                   </text>
+                 ))}
+                 {/* X-axis labels */}
+                 {data.labels.map((label, index) => {
+                   const barWidth = 30;
+                   const barSpacing = 10;
+                   const x = index * (barWidth + barSpacing) + 20 + barWidth / 2;
+                   return (
+                     <text
+                       key={index}
+                       x={x}
+                       y="270"
+                       fontSize="10"
+                       fill="#666"
+                       textAnchor="middle"
+                       transform={`rotate(-45 ${x} 270)`}
+                     >
+                       {label}
+                     </text>
+                   );
+                 })}
+                 {/* Grid lines */}
+                 {[0, 1, 2, 3, 4].map(i => (
+                   <line
+                     key={i}
+                     x1="40"
+                     y1={40 + i * 40}
+                     x2="380"
+                     y2={40 + i * 40}
+                     stroke="#e0e0e0"
+                     strokeWidth="1"
+                     opacity="0.3"
+                   />
+                 ))}
+                 {/* Bars with values */}
+                 {data.datasets[0].data.map((value, index) => {
+                   const barWidth = 30;
+                   const barSpacing = 10;
+                   const x = index * (barWidth + barSpacing) + 40;
+                   const height = (value / 100) * 160;
+                   const y = 200 - height - 20;
+                   return (
+                     <g key={index}>
+                       <rect
+                         x={x}
+                         y={y}
+                         width={barWidth}
+                         height={height}
+                         fill="#2196F3"
+                         rx="2"
+                       />
+                       <text
+                         x={x + barWidth / 2}
+                         y={y - 5}
+                         fontSize="10"
+                         fill="#2196F3"
+                         textAnchor="middle"
+                         fontWeight="bold"
+                       >
+                         {value}%
+                       </text>
+                     </g>
+                   );
+                 })}
+                 {/* Chart title */}
+                 <text
+                   x="200"
+                   y="15"
+                   fontSize="14"
+                   fill="#333"
+                   textAnchor="middle"
+                   fontWeight="bold"
+                 >
+                   {data.datasets[0].label}
+                 </text>
+               </svg>
+             </Box>
+           )}
+                     {chartType === 'pie' && (
+             <Box sx={{ width: '100%', height: '100%' }}>
+               <svg width="100%" height="100%" viewBox="0 0 300 250">
+                 {/* Chart title */}
+                 <text
+                   x="150"
+                   y="20"
+                   fontSize="14"
+                   fill="#333"
+                   textAnchor="middle"
+                   fontWeight="bold"
+                 >
+                   {data.datasets[0].label}
+                 </text>
+                 
+                 {/* Pie chart */}
+                 <g transform="translate(150, 120)">
+                   {data.datasets[0].data.map((value, index) => {
+                     const total = data.datasets[0].data.reduce((sum, val) => sum + val, 0);
+                     const percentage = value / total;
+                     const angle = percentage * 2 * Math.PI;
+                     const startAngle = data.datasets[0].data.slice(0, index).reduce((sum, val) => sum + val, 0) / total * 2 * Math.PI;
+                     const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#F44336', '#00BCD4'];
+                     
+                     const x1 = 60 * Math.cos(startAngle);
+                     const y1 = 60 * Math.sin(startAngle);
+                     const x2 = 60 * Math.cos(startAngle + angle);
+                     const y2 = 60 * Math.sin(startAngle + angle);
+                     
+                     const largeArcFlag = angle > Math.PI ? 1 : 0;
+                     
+                     // Calculate center point for label
+                     const midAngle = startAngle + angle / 2;
+                     const labelRadius = 45;
+                     const labelX = labelRadius * Math.cos(midAngle);
+                     const labelY = labelRadius * Math.sin(midAngle);
+                     
+                     return (
+                       <g key={index}>
+                         <path
+                           d={`M 0 0 L ${x1} ${y1} A 60 60 0 ${largeArcFlag} 1 ${x2} ${y2} Z`}
+                           fill={colors[index % colors.length]}
+                         />
+                         <text
+                           x={labelX}
+                           y={labelY}
+                           fontSize="10"
+                           fill="white"
+                           textAnchor="middle"
+                           fontWeight="bold"
+                         >
+                           {Math.round(percentage * 100)}%
+                         </text>
+                       </g>
+                     );
+                   })}
+                 </g>
+                 
+                 {/* Legend */}
+                 <g transform="translate(20, 200)">
+                   {data.labels.map((label, index) => {
+                     const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#F44336', '#00BCD4'];
+                     const percentage = Math.round((data.datasets[0].data[index] / data.datasets[0].data.reduce((sum, val) => sum + val, 0)) * 100);
+                     
+                     return (
+                       <g key={index} transform={`translate(0, ${index * 20})`}>
+                         <rect
+                           x="0"
+                           y="0"
+                           width="12"
+                           height="12"
+                           fill={colors[index % colors.length]}
+                           rx="2"
+                         />
+                         <text
+                           x="20"
+                           y="10"
+                           fontSize="11"
+                           fill="#666"
+                         >
+                           {label} ({percentage}%)
+                         </text>
+                       </g>
+                     );
+                   })}
+                 </g>
+               </svg>
+             </Box>
+           )}
+                     {chartType === 'radar' && (
+             <Box sx={{ width: '100%', height: '100%' }}>
+               <svg width="100%" height="100%" viewBox="0 0 250 250">
+                 {/* Chart title */}
+                 <text
+                   x="125"
+                   y="20"
+                   fontSize="14"
+                   fill="#333"
+                   textAnchor="middle"
+                   fontWeight="bold"
+                 >
+                   {data.datasets[0].label}
+                 </text>
+                 
+                 {/* Radar grid */}
+                 <g transform="translate(125, 125)">
+                   {[1, 2, 3, 4, 5].map(level => (
+                     <circle
+                       key={level}
+                       cx="0"
+                       cy="0"
+                       r={level * 15}
+                       fill="none"
+                       stroke="#e0e0e0"
+                       strokeWidth="1"
+                       opacity="0.3"
+                     />
+                   ))}
+                   
+                   {/* Axis lines */}
+                   {data.labels.map((label, index) => {
+                     const angle = (index / data.labels.length) * 2 * Math.PI - Math.PI / 2;
+                     const x = 75 * Math.cos(angle);
+                     const y = 75 * Math.sin(angle);
+                     
+                     return (
+                       <g key={index}>
+                         <line
+                           x1="0"
+                           y1="0"
+                           x2={x}
+                           y2={y}
+                           stroke="#e0e0e0"
+                           strokeWidth="1"
+                           opacity="0.5"
+                         />
+                         <text
+                           x={x * 1.1}
+                           y={y * 1.1}
+                           fontSize="10"
+                           fill="#666"
+                           textAnchor="middle"
+                         >
+                           {label}
+                         </text>
+                       </g>
+                     );
+                   })}
+                   
+                   {/* Radar data */}
+                   <polygon
+                     points={data.datasets[0].data.map((value, index) => {
+                       const angle = (index / data.datasets[0].data.length) * 2 * Math.PI - Math.PI / 2;
+                       const radius = (value / 100) * 75;
+                       const x = radius * Math.cos(angle);
+                       const y = radius * Math.sin(angle);
+                       return `${x},${y}`;
+                     }).join(' ')}
+                     fill="rgba(76, 175, 80, 0.2)"
+                     stroke="#4CAF50"
+                     strokeWidth="2"
+                   />
+                   
+                   {/* Data points with values */}
+                   {data.datasets[0].data.map((value, index) => {
+                     const angle = (index / data.datasets[0].data.length) * 2 * Math.PI - Math.PI / 2;
+                     const radius = (value / 100) * 75;
+                     const x = radius * Math.cos(angle);
+                     const y = radius * Math.sin(angle);
+                     
+                     return (
+                       <g key={index}>
+                         <circle
+                           cx={x}
+                           cy={y}
+                           r="3"
+                           fill="#4CAF50"
+                           stroke="white"
+                           strokeWidth="2"
+                         />
+                         <text
+                           x={x}
+                           y={y - 8}
+                           fontSize="9"
+                           fill="#4CAF50"
+                           textAnchor="middle"
+                           fontWeight="bold"
+                         >
+                           {value}%
+                         </text>
+                       </g>
+                     );
+                   })}
+                 </g>
+                 
+                 {/* Scale labels */}
+                 <g transform="translate(20, 50)">
+                   {[0, 25, 50, 75, 100].map((value, index) => (
+                     <text
+                       key={index}
+                       x="0"
+                       y={index * 15}
+                       fontSize="10"
+                       fill="#666"
+                     >
+                       {value}%
+                     </text>
+                   ))}
+                 </g>
+               </svg>
+             </Box>
+           )}
         </Box>
       </CardContent>
     </Card>
@@ -284,8 +689,10 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             gridTemplateColumns: 'repeat(24, 1fr)',
             gap: 0.5,
             p: 2,
-            backgroundColor: 'grey.50',
-            borderRadius: 1
+            backgroundColor: 'background.paper',
+            borderRadius: 1,
+            border: '1px solid',
+            borderColor: 'divider'
           }}
         >
           {Array.from({ length: 168 }, (_, i) => (
@@ -356,9 +763,6 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     <Box>
       {/* Header */}
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
-        <Typography variant="h5" component="h2" gutterBottom>
-          AI Document Agent Analytics
-        </Typography>
         <Box display="flex" alignItems="center" gap={2}>
           <FormControlLabel
             control={

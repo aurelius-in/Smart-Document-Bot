@@ -636,8 +636,8 @@ This Agreement shall be governed by the laws of the State of New York.`,
       case 'analytics':
         return (
           <Box>
-            <Typography variant="h4" gutterBottom>
-              Analytics Dashboard
+            <Typography variant="h6" gutterBottom>
+              Analytics
             </Typography>
             <AnalyticsDashboard
               timeRange="7d"

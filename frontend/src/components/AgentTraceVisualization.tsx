@@ -255,11 +255,25 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
               secondary={
                 <Box>
                   <Typography variant="caption" color="text.secondary">
-                    Parameters: {JSON.stringify(toolCall.parameters, null, 2)}
+                    {toolCall.name === 'classify_document_type' ? 
+                      `Analyzing document content for classification...` :
+                      toolCall.name === 'extract_entities' ? 
+                        `Extracting named entities from document text...` :
+                      toolCall.name === 'assess_compliance_risks' ? 
+                        `Evaluating compliance requirements and risk factors...` :
+                      `Parameters: ${Object.keys(toolCall.parameters).length} items`
+                    }
                   </Typography>
                   {toolCall.result && (
                     <Typography variant="caption" display="block" color="text.secondary">
-                      Result: {JSON.stringify(toolCall.result, null, 2)}
+                      {toolCall.result.type ? 
+                        `Classified as: ${toolCall.result.type}` :
+                        toolCall.result.entities ? 
+                          `Found ${toolCall.result.entities.length} entities` :
+                        toolCall.result.risk_level ? 
+                          `Risk Level: ${toolCall.result.risk_level}` :
+                          `Result: ${JSON.stringify(toolCall.result, null, 2)}`
+                      }
                     </Typography>
                   )}
                 </Box>
@@ -277,7 +291,7 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
         <CardContent>
           <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
             <Typography variant="h6" gutterBottom>
-              AI Document Agent - Execution Trace
+              Execution Trace
             </Typography>
             <Box display="flex" alignItems="center" gap={1}>
               <Chip
@@ -474,10 +488,15 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
                             </Typography>
                             <Paper
                               variant="outlined"
-                              sx={{ p: 1, mt: 0.5, backgroundColor: 'grey.50' }}
+                              sx={{ p: 1, mt: 0.5, backgroundColor: 'background.paper', border: '1px solid', borderColor: 'divider' }}
                             >
-                              <Typography variant="caption" fontFamily="monospace">
-                                {JSON.stringify(step.input, null, 2)}
+                              <Typography variant="caption" fontFamily="monospace" sx={{ color: 'text.primary' }}>
+                                {step.input.document_text ? 
+                                  `Document Text: ${step.input.document_text.substring(0, 100)}${step.input.document_text.length > 100 ? '...' : ''}` :
+                                  step.input.document_type ? 
+                                    `Document Type: ${step.input.document_type}` :
+                                    JSON.stringify(step.input, null, 2)
+                                }
                               </Typography>
                             </Paper>
                           </Box>
@@ -487,10 +506,17 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
                             </Typography>
                             <Paper
                               variant="outlined"
-                              sx={{ p: 1, mt: 0.5, backgroundColor: 'grey.50' }}
+                              sx={{ p: 1, mt: 0.5, backgroundColor: 'background.paper', border: '1px solid', borderColor: 'divider' }}
                             >
-                              <Typography variant="caption" fontFamily="monospace">
-                                {JSON.stringify(step.output, null, 2)}
+                              <Typography variant="caption" fontFamily="monospace" sx={{ color: 'text.primary' }}>
+                                {step.output.document_type ? 
+                                  `Document Type: ${step.output.document_type}` :
+                                  step.output.entities ? 
+                                    `Entities Found: ${step.output.entities.length} items` :
+                                    step.output.risk_assessment ? 
+                                      `Risk Assessment: ${step.output.risk_assessment}` :
+                                      JSON.stringify(step.output, null, 2)
+                                }
                               </Typography>
                             </Paper>
                           </Box>
@@ -505,10 +531,15 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
                           </Typography>
                           <Paper
                             variant="outlined"
-                            sx={{ p: 1, backgroundColor: 'grey.50' }}
+                            sx={{ p: 1, backgroundColor: 'background.paper', border: '1px solid', borderColor: 'divider' }}
                           >
-                            <Typography variant="caption" fontFamily="monospace">
-                              {JSON.stringify(step.metadata, null, 2)}
+                            <Typography variant="caption" fontFamily="monospace" sx={{ color: 'text.primary' }}>
+                              {step.metadata.processing_time ? 
+                                `Processing Time: ${step.metadata.processing_time}ms` :
+                                step.metadata.model_used ? 
+                                  `Model Used: ${step.metadata.model_used}` :
+                                  JSON.stringify(step.metadata, null, 2)
+                              }
                             </Typography>
                           </Paper>
                         </Box>
@@ -538,7 +569,7 @@ const AgentTraceVisualization: React.FC<AgentTraceVisualizationProps> = ({
           </List>
 
           {/* Summary Stats */}
-          <Box mt={3} p={2} bgcolor="grey.50" borderRadius={1}>
+          <Box mt={3} p={2} sx={{ backgroundColor: 'background.paper', border: '1px solid', borderColor: 'divider' }} borderRadius={1}>
             <Typography variant="subtitle2" gutterBottom>
               Trace Summary
             </Typography>
