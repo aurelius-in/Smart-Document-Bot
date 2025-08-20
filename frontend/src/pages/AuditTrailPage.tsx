@@ -237,7 +237,7 @@ const AuditTrailPage: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        AI Document Agent - Audit Trail
+        Audit Trail
       </Typography>
 
       <Grid container spacing={3}>

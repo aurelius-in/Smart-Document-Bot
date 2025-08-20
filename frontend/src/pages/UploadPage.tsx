@@ -202,7 +202,7 @@ const UploadPage: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        AI Document Agent - Upload & Process
+        Upload & Process
       </Typography>
 
       <Grid container spacing={3}>
