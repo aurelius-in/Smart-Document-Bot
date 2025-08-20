@@ -1,27 +1,28 @@
-import asyncio
 import os
+import logging
 from contextlib import asynccontextmanager
-from typing import Dict, Any
-
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import uvicorn
-from sse_starlette.sse import EventSourceResponse
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .core.config import settings
-from .core.security import get_current_user, create_access_token
 from .core.middleware import setup_middleware
-from .database.connection import init_database, check_database_connection
-from .api.v1.endpoints import auth, agentic, documents, traces, qa, compare, audit, settings, memory, summarizer, translator, sentiment, agents
-from .services.agent_service import AgentService
-from .services.memory_service import MemoryService
 from .core.monitoring import setup_monitoring, instrument_fastapi
+from .database.connection import init_database, check_database_connection
+from .services.agent_service import AgentService
 
-# Global agent service instance
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Global service instances
 agent_service = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,241 +30,327 @@ async def lifespan(app: FastAPI):
     global agent_service
     
     # Startup
-    print("🚀 Starting Smart Document Bot...")
+    logger.info("Starting AI Document Agent application...")
     
-    # Check database connection
-    if check_database_connection():
-        print("✅ Database connection verified")
-        # Initialize database tables
-        init_database()
-        print("✅ Database initialized")
-    else:
-        print("⚠️ Database connection failed - using fallback mode")
-    
-    # Initialize agent service
-    agent_service = AgentService()
-    print("✅ Agent service initialized")
-    
-    # Setup monitoring
-    setup_monitoring()
-    print("✅ Monitoring setup complete")
+    try:
+        # Initialize database
+        logger.info("Initializing database...")
+        await init_database()
+        
+        # Check database connection
+        logger.info("Checking database connection...")
+        await check_database_connection()
+        
+        # Initialize agent service
+        logger.info("Initializing agent service...")
+        agent_service = AgentService()
+        await agent_service.initialize()
+        
+        # Setup monitoring
+        if settings.ENABLE_MONITORING:
+            logger.info("Setting up monitoring...")
+            setup_monitoring()
+        
+        logger.info("Application startup completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Application startup failed: {e}")
+        raise
     
     yield
     
     # Shutdown
-    print("🛑 Shutting down Smart Document Bot...")
-    if agent_service:
-        await agent_service.cleanup_old_processing_history()
-    print("✅ Cleanup complete")
+    logger.info("Shutting down AI Document Agent application...")
+    
+    try:
+        if agent_service:
+            await agent_service.cleanup()
+        logger.info("Application shutdown completed successfully")
+    except Exception as e:
+        logger.error(f"Application shutdown error: {e}")
 
-# Create FastAPI app
+
+# Create FastAPI application
 app = FastAPI(
-    title="Smart Document Bot API",
-    description="AI-powered document processing and analysis system",
-    version="1.0.0",
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    description="Enterprise-Grade AI Document Processing & Analysis Platform",
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan
 )
 
-# Security
-security = HTTPBearer()
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Setup custom middleware
+# Setup middleware
 setup_middleware(app)
 
-# Instrument FastAPI for monitoring
-instrument_fastapi(app)
+# Setup monitoring
+if settings.ENABLE_MONITORING:
+    instrument_fastapi(app)
 
-# Dependency to get agent service
-def get_agent_service() -> AgentService:
-    """Get the global agent service instance"""
-    if agent_service is None:
-        raise RuntimeError("Agent service not initialized")
-    return agent_service
 
-# Override dependency injection for endpoints
-app.dependency_overrides[AgentService] = get_agent_service
+# Global exception handlers
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Handle HTTP exceptions"""
+    logger.error(f"HTTP Exception: {exc.status_code} - {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code,
+            "path": request.url.path
+        }
+    )
 
-# Include routers
-app.include_router(
-    auth.router,
-    prefix="/api/v1/auth",
-    tags=["Authentication"]
-)
 
-app.include_router(
-    agentic.router,
-    prefix="/api/v1/agentic",
-    tags=["Agentic Processing"]
-)
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle validation errors"""
+    logger.error(f"Validation Error: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "Validation error",
+            "details": exc.errors(),
+            "path": request.url.path
+        }
+    )
 
-app.include_router(
-    documents.router,
-    prefix="/api/v1/documents",
-    tags=["Documents"],
-    dependencies=[Depends(get_agent_service)]
-)
 
-app.include_router(
-    traces.router,
-    prefix="/api/v1/traces",
-    tags=["Agent Traces"],
-    dependencies=[Depends(get_agent_service)]
-)
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle general exceptions"""
+    logger.error(f"Unhandled Exception: {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "message": "An unexpected error occurred",
+            "path": request.url.path
+        }
+    )
 
-app.include_router(
-    qa.router,
-    prefix="/api/v1/qa",
-    tags=["Question Answering"],
-    dependencies=[Depends(get_agent_service)]
-)
 
-app.include_router(
-    compare.router,
-    prefix="/api/v1/compare",
-    tags=["Document Comparison"],
-    dependencies=[Depends(get_agent_service)]
-)
-
-app.include_router(
-    audit.router,
-    prefix="/api/v1/audit",
-    tags=["Audit Trail"],
-    dependencies=[Depends(get_agent_service)]
-)
-
-app.include_router(
-    settings.router,
-    prefix="/api/v1/settings",
-    tags=["Settings"]
-)
-
-app.include_router(
-    memory.router,
-    prefix="/api/v1/memory",
-    tags=["Memory"]
-)
-
-app.include_router(
-    summarizer.router,
-    prefix="/api/v1/summarizer",
-    tags=["Document Summarization"],
-    dependencies=[Depends(get_agent_service)]
-)
-
-app.include_router(
-    translator.router,
-    prefix="/api/v1/translator",
-    tags=["Document Translation"],
-    dependencies=[Depends(get_agent_service)]
-)
-
-app.include_router(
-    sentiment.router,
-    prefix="/api/v1/sentiment",
-    tags=["Sentiment Analysis"],
-    dependencies=[Depends(get_agent_service)]
-)
-
-app.include_router(
-    agents.router,
-    prefix="/api/v1/agents",
-    tags=["Agent Management"],
-    dependencies=[Depends(get_agent_service)]
-)
-
-# Health check endpoint
+# Health check endpoints
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "version": "1.0.0",
-        "timestamp": "2024-01-01T00:00:00Z"
-    }
+    """Basic health check"""
+    try:
+        # Check database connection
+        await check_database_connection()
+        
+        # Check agent service
+        if agent_service:
+            service_status = await agent_service.get_status()
+        else:
+            service_status = "not_initialized"
+        
+        return {
+            "status": "healthy",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "version": settings.APP_VERSION,
+            "database": "connected",
+            "agent_service": service_status
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=503, detail="Service unhealthy")
+
+
+@app.get("/health/detailed")
+async def detailed_health_check():
+    """Detailed health check with component status"""
+    try:
+        health_status = {
+            "status": "healthy",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "version": settings.APP_VERSION,
+            "components": {}
+        }
+        
+        # Database health
+        try:
+            await check_database_connection()
+            health_status["components"]["database"] = {
+                "status": "healthy",
+                "message": "Database connection successful"
+            }
+        except Exception as e:
+            health_status["components"]["database"] = {
+                "status": "unhealthy",
+                "message": f"Database connection failed: {str(e)}"
+            }
+            health_status["status"] = "degraded"
+        
+        # Agent service health
+        if agent_service:
+            try:
+                service_status = await agent_service.get_status()
+                health_status["components"]["agent_service"] = {
+                    "status": "healthy",
+                    "message": "Agent service operational",
+                    "details": service_status
+                }
+            except Exception as e:
+                health_status["components"]["agent_service"] = {
+                    "status": "unhealthy",
+                    "message": f"Agent service failed: {str(e)}"
+                }
+                health_status["status"] = "degraded"
+        else:
+            health_status["components"]["agent_service"] = {
+                "status": "not_initialized",
+                "message": "Agent service not initialized"
+            }
+        
+        # Redis health
+        try:
+            import redis
+            redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+            redis_client.ping()
+            health_status["components"]["redis"] = {
+                "status": "healthy",
+                "message": "Redis connection successful"
+            }
+        except Exception as e:
+            health_status["components"]["redis"] = {
+                "status": "unhealthy",
+                "message": f"Redis connection failed: {str(e)}"
+            }
+            health_status["status"] = "degraded"
+        
+        return health_status
+        
+    except Exception as e:
+        logger.error(f"Detailed health check failed: {e}")
+        raise HTTPException(status_code=503, detail="Service unhealthy")
+
 
 # Root endpoint
 @app.get("/")
 async def root():
-    """Root endpoint"""
+    """Root endpoint with API information"""
     return {
-        "message": "Smart Document Bot API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health"
-    }
-
-# Agent capabilities endpoint
-@app.get("/api/v1/agents/capabilities")
-async def get_agent_capabilities(agent_service: AgentService = Depends(get_agent_service)):
-    """Get information about available agents and their capabilities"""
-    return {
-        "agents": [
-            {
-                "name": "OrchestratorAgent",
-                "description": "Coordinates the overall document processing workflow",
-                "capabilities": ["workflow_coordination", "task_scheduling", "error_handling"]
-            },
-            {
-                "name": "IngestionAgent", 
-                "description": "Handles document upload and initial processing",
-                "capabilities": ["file_upload", "format_detection", "preprocessing"]
-            },
-            {
-                "name": "ClassifierAgent",
-                "description": "Categorizes documents by type and content",
-                "capabilities": ["document_classification", "content_analysis", "metadata_extraction"]
-            },
-            {
-                "name": "EntityAgent",
-                "description": "Extracts key entities and information",
-                "capabilities": ["entity_extraction", "named_entity_recognition", "relationship_mapping"]
-            },
-            {
-                "name": "RiskAgent",
-                "description": "Assesses compliance risks and issues",
-                "capabilities": ["risk_assessment", "compliance_checking", "vulnerability_detection"]
-            },
-            {
-                "name": "QAAgent",
-                "description": "Provides intelligent Q&A capabilities",
-                "capabilities": ["question_answering", "context_understanding", "knowledge_retrieval"]
-            },
-            {
-                "name": "CompareAgent",
-                "description": "Compares documents for similarities and differences",
-                "capabilities": ["document_comparison", "similarity_analysis", "difference_detection"]
-            },
-            {
-                "name": "AuditAgent",
-                "description": "Monitors and logs all system activities",
-                "capabilities": ["activity_logging", "audit_trail", "compliance_monitoring"]
-            },
-            {
-                "name": "SummarizerAgent",
-                "description": "Creates document summaries and insights",
-                "capabilities": ["document_summarization", "key_point_extraction", "insight_generation"]
-            },
-            {
-                "name": "TranslatorAgent",
-                "description": "Handles multi-language document processing",
-                "capabilities": ["language_translation", "multilingual_processing", "cultural_adaptation"]
-            },
-            {
-                "name": "SentimentAnalysisAgent",
-                "description": "Analyzes document sentiment and tone",
-                "capabilities": ["sentiment_analysis", "tone_detection", "emotion_recognition"]
-            }
+        "name": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "description": "Enterprise-Grade AI Document Processing & Analysis Platform",
+        "status": "operational",
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/health",
+            "api": "/api/v1"
+        },
+        "features": [
+            "Multi-Agent AI Processing",
+            "Document Intelligence",
+            "Enterprise Security",
+            "Real-time Analytics",
+            "Compliance Monitoring"
         ]
     }
 
+
+# API status endpoint
+@app.get("/api/v1/status")
+async def api_status():
+    """API status endpoint"""
+    return {
+        "api_version": "v1",
+        "status": "operational",
+        "timestamp": "2024-01-01T00:00:00Z",
+        "endpoints": {
+            "auth": "/api/v1/auth",
+            "documents": "/api/v1/documents",
+            "agents": "/api/v1/agents",
+            "analytics": "/api/v1/analytics"
+        }
+    }
+
+
+# Include API routers
+from .api.v1.endpoints import (
+    auth, agentic, documents, traces, qa, compare, 
+    audit, settings, memory, summarizer, translator, 
+    sentiment, agents
+)
+
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(agentic.router, prefix="/api/v1/agentic", tags=["Agentic Processing"])
+app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
+app.include_router(traces.router, prefix="/api/v1/traces", tags=["Agent Traces"])
+app.include_router(qa.router, prefix="/api/v1/qa", tags=["Question Answering"])
+app.include_router(compare.router, prefix="/api/v1/compare", tags=["Document Comparison"])
+app.include_router(audit.router, prefix="/api/v1/audit", tags=["Audit Trail"])
+app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"])
+app.include_router(memory.router, prefix="/api/v1/memory", tags=["Memory Management"])
+app.include_router(summarizer.router, prefix="/api/v1/summarizer", tags=["Document Summarization"])
+app.include_router(translator.router, prefix="/api/v1/translator", tags=["Document Translation"])
+app.include_router(sentiment.router, prefix="/api/v1/sentiment", tags=["Sentiment Analysis"])
+app.include_router(agents.router, prefix="/api/v1/agents", tags=["Agent Management"])
+
+
+# Agent capabilities endpoint
+@app.get("/api/v1/agents/capabilities")
+async def get_agent_capabilities():
+    """Get all available agent capabilities"""
+    return {
+        "agents": {
+            "orchestrator": {
+                "description": "Workflow orchestration and coordination",
+                "capabilities": ["workflow_planning", "execution_monitoring", "resource_allocation"]
+            },
+            "ingestion": {
+                "description": "Document ingestion and content extraction",
+                "capabilities": ["text_extraction", "metadata_extraction", "format_detection"]
+            },
+            "classifier": {
+                "description": "Document classification and categorization",
+                "capabilities": ["document_classification", "domain_detection", "content_categorization"]
+            },
+            "entity": {
+                "description": "Named entity recognition and extraction",
+                "capabilities": ["entity_extraction", "relationship_mapping", "entity_linking"]
+            },
+            "risk": {
+                "description": "Risk assessment and compliance monitoring",
+                "capabilities": ["risk_assessment", "compliance_checking", "policy_enforcement"]
+            },
+            "qa": {
+                "description": "Question answering and document querying",
+                "capabilities": ["question_answering", "context_retrieval", "answer_generation"]
+            },
+            "compare": {
+                "description": "Document comparison and diff analysis",
+                "capabilities": ["document_comparison", "change_detection", "similarity_analysis"]
+            },
+            "audit": {
+                "description": "Audit logging and compliance tracking",
+                "capabilities": ["audit_logging", "compliance_tracking", "event_monitoring"]
+            },
+            "summarizer": {
+                "description": "Document summarization and key point extraction",
+                "capabilities": ["extractive_summarization", "abstractive_summarization", "key_point_extraction"]
+            },
+            "translator": {
+                "description": "Multi-language document translation",
+                "capabilities": ["language_detection", "document_translation", "quality_assessment"]
+            },
+            "sentiment": {
+                "description": "Sentiment analysis and tone detection",
+                "capabilities": ["sentiment_analysis", "tone_detection", "emotion_recognition"]
+            }
+        },
+        "total_agents": 11,
+        "total_capabilities": 33
+    }
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG,
+        log_level=settings.LOG_LEVEL.lower()
+    )

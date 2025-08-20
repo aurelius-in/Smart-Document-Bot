@@ -110,4 +110,24 @@ The application can be configured through environment variables:
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🏆 Enterprise Support
+
+### **Professional Services**
+- **Custom Development**: Tailored features and integrations
+- **Deployment Support**: On-premise and cloud deployment
+- **Training & Consulting**: Team training and best practices
+- **24/7 Support**: Enterprise support with SLA guarantees
+
+### **Contact Information**
+- **Email**: enterprise@ai-document-agent.com
+- **Phone**: +1 (555) 123-4567
+- **Documentation**: https://docs.ai-document-agent.com
+- **Support Portal**: https://support.ai-document-agent.com
+
+---
+
+**Built with ❤️ by the AI Document Agent Team**
+
+*Empowering enterprises with intelligent document processing since 2024*
