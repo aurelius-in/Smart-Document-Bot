@@ -26,7 +26,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  useTheme as useMuiTheme
 } from '@mui/material';
 import {
   Compare as CompareIcon,
@@ -39,12 +40,17 @@ import {
   Security as SecurityIcon,
   Assessment as AssessmentIcon,
   History as HistoryIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  AutoAwesome
 } from '@mui/icons-material';
 import { toast } from 'react-hot-toast';
+import { motion } from 'framer-motion';
+import { useTheme } from '../contexts/ThemeContext';
 import apiService, { DocumentInfo, ComparisonRequest, ComparisonResult } from '../services/apiService';
 
 const ComparePage: React.FC = () => {
+  const { darkMode } = useTheme();
+  const muiTheme = useMuiTheme();
   const [documentA, setDocumentA] = useState('');
   const [documentB, setDocumentB] = useState('');
   const [comparisonType, setComparisonType] = useState<'semantic' | 'structural' | 'compliance' | 'risk'>('semantic');
@@ -171,211 +177,279 @@ const ComparePage: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        Document Comparison
-      </Typography>
+      {/* Header Section */}
+      <Box sx={{ 
+        mb: 4,
+        background: darkMode 
+          ? 'linear-gradient(135deg, #0f0f23 0%, #1a1a3a 25%, #2d1b69 50%, #1a1a3a 75%, #0f0f23 100%)'
+          : 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 25%, #cbd5e1 50%, #e2e8f0 75%, #f8fafc 100%)',
+        color: darkMode ? 'white' : 'inherit',
+        p: 4,
+        borderRadius: 3,
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'radial-gradient(circle at 30% 20%, rgba(138, 43, 226, 0.3) 0%, transparent 50%), radial-gradient(circle at 70% 80%, rgba(75, 0, 130, 0.3) 0%, transparent 50%)',
+          pointerEvents: 'none'
+        }
+      }}>
+        <Box display="flex" alignItems="center" gap={4} position="relative" zIndex={1}>
+          <Box sx={{ 
+            background: 'linear-gradient(135deg, rgba(138, 43, 226, 0.8) 0%, rgba(75, 0, 130, 0.8) 100%)',
+            borderRadius: '50%', 
+            p: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 32px rgba(138, 43, 226, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
+          }}>
+            <CompareIcon sx={{ 
+              fontSize: '2.5rem',
+              color: 'white',
+              filter: 'drop-shadow(0 0 12px rgba(138, 43, 226, 0.8))'
+            }} />
+          </Box>
+          <Box>
+            <Typography variant="h3" component="h1" gutterBottom sx={{ 
+              fontWeight: 700,
+              fontFamily: '"Orbitron", "Roboto", sans-serif',
+              letterSpacing: '0.05em',
+              background: 'linear-gradient(135deg, #ffffff 0%, #e0e7ff 50%, #c7d2fe 100%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              textShadow: '0 0 30px rgba(138, 43, 226, 0.5)'
+            }}>
+              Document Comparison
+            </Typography>
+            <Typography variant="h6" sx={{ 
+              opacity: 0.95,
+              background: 'linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}>
+              Compare documents for semantic, structural, compliance, and risk analysis
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
 
-      <Grid container spacing={3}>
-        {/* Comparison Controls */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Select Documents to Compare
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={4}>
-                  <FormControl fullWidth>
-                    <InputLabel>Document A</InputLabel>
-                    <Select
-                      value={documentA}
-                      label="Document A"
-                      onChange={(e) => setDocumentA(e.target.value)}
-                      disabled={isLoadingDocuments}
-                    >
-                      {availableDocuments.map((doc) => (
-                        <MenuItem key={doc.id} value={doc.id}>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <FileIcon sx={{ mr: 1 }} />
-                            {doc.filename}
-                          </Box>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <FormControl fullWidth>
-                    <InputLabel>Document B</InputLabel>
-                    <Select
-                      value={documentB}
-                      label="Document B"
-                      onChange={(e) => setDocumentB(e.target.value)}
-                      disabled={isLoadingDocuments}
-                    >
-                      {availableDocuments.map((doc) => (
-                        <MenuItem key={doc.id} value={doc.id}>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <FileIcon sx={{ mr: 1 }} />
-                            {doc.filename}
-                          </Box>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <FormControl fullWidth>
-                    <InputLabel>Comparison Type</InputLabel>
-                    <Select
-                      value={comparisonType}
-                      label="Comparison Type"
-                      onChange={(e) => setComparisonType(e.target.value as any)}
-                    >
-                      <MenuItem value="semantic">Semantic Analysis</MenuItem>
-                      <MenuItem value="structural">Structural Comparison</MenuItem>
-                      <MenuItem value="compliance">Compliance Check</MenuItem>
-                      <MenuItem value="risk">Risk Assessment</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
-              <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-                <Button
-                  variant="contained"
-                  startIcon={<CompareIcon />}
-                  onClick={handleCompare}
-                  disabled={!documentA || !documentB || isComparing || isLoadingDocuments}
-                >
-                  {isComparing ? (
-                    <>
-                      <CircularProgress size={20} sx={{ mr: 1 }} />
-                      Comparing...
-                    </>
-                  ) : (
-                    'Compare Documents'
-                  )}
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<RefreshIcon />}
-                  onClick={loadDocuments}
-                  disabled={isLoadingDocuments}
-                >
-                  Refresh Documents
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    setDocumentA('');
-                    setDocumentB('');
-                    setComparisonType('semantic');
-                  }}
-                >
-                  Clear Selection
-                </Button>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Comparison Results */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">
-                  <HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                  Comparison History
+      {/* Rest of the existing content */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <Grid container spacing={3}>
+          {/* Comparison Controls */}
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Select Documents to Compare
                 </Typography>
-                <Button
-                  variant="outlined"
-                  startIcon={<RefreshIcon />}
-                  onClick={loadComparisonHistory}
-                >
-                  Refresh
-                </Button>
-              </Box>
-              
-              {comparisonResults.length === 0 ? (
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <Typography variant="body1" color="text.secondary">
-                    No comparison results yet
-                  </Typography>
-                </Box>
-              ) : (
-                <List>
-                  {comparisonResults.map((result, index) => (
-                    <React.Fragment key={result.id}>
-                      <ListItem>
-                        <ListItemIcon>
-                          <CompareIcon color="primary" />
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                              <Typography variant="subtitle1">
-                                {getDocumentName(result.documentAId)} vs {getDocumentName(result.documentBId)}
-                              </Typography>
-                              <Chip
-                                label={result.comparisonType}
-                                size="small"
-                                variant="outlined"
-                              />
-                              <Chip
-                                label={result.status}
-                                color={getStatusColor(result.status)}
-                                size="small"
-                              />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <FormControl fullWidth>
+                      <InputLabel>Document A</InputLabel>
+                      <Select
+                        value={documentA}
+                        label="Document A"
+                        onChange={(e) => setDocumentA(e.target.value)}
+                        disabled={isLoadingDocuments}
+                      >
+                        {availableDocuments.map((doc) => (
+                          <MenuItem key={doc.id} value={doc.id}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <FileIcon sx={{ mr: 1 }} />
+                              {doc.filename}
                             </Box>
-                          }
-                          secondary={
-                            <Box>
-                              <Typography variant="body2" color="text.secondary">
-                                {new Date(result.createdAt).toLocaleString()}
-                              </Typography>
-                              {result.status === 'completed' && (
-                                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                                  <Chip
-                                    label={`${(result.confidence * 100).toFixed(1)}% Confidence`}
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                  <Chip
-                                    label={`${result.duration}ms`}
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                  {result.semanticDiffs && (
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <FormControl fullWidth>
+                      <InputLabel>Document B</InputLabel>
+                      <Select
+                        value={documentB}
+                        label="Document B"
+                        onChange={(e) => setDocumentB(e.target.value)}
+                        disabled={isLoadingDocuments}
+                      >
+                        {availableDocuments.map((doc) => (
+                          <MenuItem key={doc.id} value={doc.id}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <FileIcon sx={{ mr: 1 }} />
+                              {doc.filename}
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <FormControl fullWidth>
+                      <InputLabel>Comparison Type</InputLabel>
+                      <Select
+                        value={comparisonType}
+                        label="Comparison Type"
+                        onChange={(e) => setComparisonType(e.target.value as any)}
+                      >
+                        <MenuItem value="semantic">Semantic Analysis</MenuItem>
+                        <MenuItem value="structural">Structural Comparison</MenuItem>
+                        <MenuItem value="compliance">Compliance Check</MenuItem>
+                        <MenuItem value="risk">Risk Assessment</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+                <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<CompareIcon />}
+                    onClick={handleCompare}
+                    disabled={!documentA || !documentB || isComparing || isLoadingDocuments}
+                  >
+                    {isComparing ? (
+                      <>
+                        <CircularProgress size={20} sx={{ mr: 1 }} />
+                        Comparing...
+                      </>
+                    ) : (
+                      'Compare Documents'
+                    )}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<RefreshIcon />}
+                    onClick={loadDocuments}
+                    disabled={isLoadingDocuments}
+                  >
+                    Refresh Documents
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setDocumentA('');
+                      setDocumentB('');
+                      setComparisonType('semantic');
+                    }}
+                  >
+                    Clear Selection
+                  </Button>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Comparison Results */}
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">
+                    <HistoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                    Comparison History
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    startIcon={<RefreshIcon />}
+                    onClick={loadComparisonHistory}
+                  >
+                    Refresh
+                  </Button>
+                </Box>
+                
+                {comparisonResults.length === 0 ? (
+                  <Box sx={{ textAlign: 'center', py: 4 }}>
+                    <Typography variant="body1" color="text.secondary">
+                      No comparison results yet
+                    </Typography>
+                  </Box>
+                ) : (
+                  <List>
+                    {comparisonResults.map((result, index) => (
+                      <React.Fragment key={result.id}>
+                        <ListItem>
+                          <ListItemIcon>
+                            <CompareIcon color="primary" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <Typography variant="subtitle1">
+                                  {getDocumentName(result.documentAId)} vs {getDocumentName(result.documentBId)}
+                                </Typography>
+                                <Chip
+                                  label={result.comparisonType}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                                <Chip
+                                  label={result.status}
+                                  color={getStatusColor(result.status)}
+                                  size="small"
+                                />
+                              </Box>
+                            }
+                            secondary={
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">
+                                  {new Date(result.createdAt).toLocaleString()}
+                                </Typography>
+                                {result.status === 'completed' && (
+                                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                                     <Chip
-                                      label={`${result.semanticDiffs.length} differences`}
+                                      label={`${(result.confidence * 100).toFixed(1)}% Confidence`}
                                       size="small"
                                       variant="outlined"
                                     />
-                                  )}
-                                </Box>
-                              )}
-                            </Box>
-                          }
-                        />
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => viewComparisonResult(result.id)}
-                          disabled={result.status !== 'completed'}
-                        >
-                          View Details
-                        </Button>
-                      </ListItem>
-                      {index < comparisonResults.length - 1 && <Divider />}
-                    </React.Fragment>
-                  ))}
-                </List>
-              )}
-            </CardContent>
-          </Card>
+                                    <Chip
+                                      label={`${result.duration}ms`}
+                                      size="small"
+                                      variant="outlined"
+                                    />
+                                    {result.semanticDiffs && (
+                                      <Chip
+                                        label={`${result.semanticDiffs.length} differences`}
+                                        size="small"
+                                        variant="outlined"
+                                      />
+                                    )}
+                                  </Box>
+                                )}
+                              </Box>
+                            }
+                          />
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => viewComparisonResult(result.id)}
+                            disabled={result.status !== 'completed'}
+                          >
+                            View Details
+                          </Button>
+                        </ListItem>
+                        {index < comparisonResults.length - 1 && <Divider />}
+                      </React.Fragment>
+                    ))}
+                  </List>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
-      </Grid>
+      </motion.div>
 
       {/* Comparison Result Details Dialog */}
       <Dialog
