@@ -1,4 +1,4 @@
-# AI Document Agent
+# AI Document Agent (aiDa)
 
 An intelligent document processing and analysis platform powered by AI agents for regulatory compliance and business intelligence.
 
