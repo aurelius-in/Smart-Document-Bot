@@ -1,5 +1,6 @@
 import json
 import asyncio
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import redis.asyncio as redis
@@ -9,32 +10,71 @@ import hashlib
 import uuid
 
 from ..core.config import settings
+from ..core.monitoring import get_monitor
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryService:
     """Service for managing shared memory (Redis + Vector DB)"""
     
     def __init__(self):
+        self.monitor = get_monitor()
         self.redis_client = None
         self.vector_store = None
         self.chroma_client = None
-        self._initialize_connections()
+        self.is_initialized = False
+        
+        # In-memory fallback storage
+        self._memory_storage = {}
     
-    def _initialize_connections(self):
+    async def initialize(self) -> None:
         """Initialize Redis and vector database connections"""
         try:
+            logger.info("Initializing MemoryService...")
+            
             # Initialize Redis
-            print("🔗 Initializing Redis connection...")
-            if settings.REDIS_URL:
-                self.redis_client = redis.from_url(settings.REDIS_URL)
-                # Test connection
-                asyncio.create_task(self._test_redis_connection())
-            else:
-                print("⚠️ Redis URL not configured, using in-memory storage")
-                self.redis_client = None
+            await self._initialize_redis()
             
             # Initialize ChromaDB
-            print("🔗 Initializing ChromaDB connection...")
+            await self._initialize_chromadb()
+            
+            self.is_initialized = True
+            logger.info("MemoryService initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize MemoryService: {e}")
+            # Fallback to in-memory storage
+            self._setup_fallback_storage()
+            raise
+    
+    async def _initialize_redis(self) -> None:
+        """Initialize Redis connection"""
+        try:
+            if settings.REDIS_URL:
+                logger.info("Initializing Redis connection...")
+                self.redis_client = redis.from_url(
+                    settings.REDIS_URL,
+                    decode_responses=True,
+                    max_connections=settings.REDIS_MAX_CONNECTIONS
+                )
+                
+                # Test connection
+                await self.redis_client.ping()
+                logger.info("Redis connection successful")
+            else:
+                logger.warning("Redis URL not configured, using in-memory storage")
+                self.redis_client = None
+                
+        except Exception as e:
+            logger.error(f"Redis initialization failed: {e}")
+            self.redis_client = None
+    
+    async def _initialize_chromadb(self) -> None:
+        """Initialize ChromaDB connection"""
+        try:
+            logger.info("Initializing ChromaDB connection...")
+            
             if settings.CHROMA_PERSIST_DIRECTORY:
                 self.chroma_client = chromadb.PersistentClient(
                     path=settings.CHROMA_PERSIST_DIRECTORY,
@@ -43,78 +83,104 @@ class MemoryService:
                         allow_reset=True
                     )
                 )
-                # Get or create default collection
-                try:
-                    self.vector_store = self.chroma_client.get_collection("documents")
-                except:
-                    self.vector_store = self.chroma_client.create_collection("documents")
             else:
-                print("⚠️ ChromaDB path not configured, using in-memory storage")
+                logger.warning("ChromaDB path not configured, using in-memory storage")
                 self.chroma_client = chromadb.Client()
-                self.vector_store = self.chroma_client.create_collection("documents")
             
-            print("✅ Memory connections initialized")
+            # Get or create default collection
+            try:
+                self.vector_store = self.chroma_client.get_collection(settings.CHROMA_COLLECTION_NAME)
+                logger.info(f"Using existing ChromaDB collection: {settings.CHROMA_COLLECTION_NAME}")
+            except Exception:
+                self.vector_store = self.chroma_client.create_collection(settings.CHROMA_COLLECTION_NAME)
+                logger.info(f"Created new ChromaDB collection: {settings.CHROMA_COLLECTION_NAME}")
             
         except Exception as e:
-            print(f"⚠️ Memory initialization failed: {e}")
-            # Fallback to in-memory storage
-            self.redis_client = None
-            self.chroma_client = chromadb.Client()
-            self.vector_store = self.chroma_client.create_collection("documents")
+            logger.error(f"ChromaDB initialization failed: {e}")
+            self._setup_fallback_storage()
     
-    async def _test_redis_connection(self):
-        """Test Redis connection"""
-        try:
-            await self.redis_client.ping()
-            print("✅ Redis connection successful")
-        except Exception as e:
-            print(f"❌ Redis connection failed: {e}")
-            self.redis_client = None
+    def _setup_fallback_storage(self) -> None:
+        """Setup fallback in-memory storage"""
+        logger.info("Setting up fallback in-memory storage")
+        self.chroma_client = chromadb.Client()
+        self.vector_store = self.chroma_client.create_collection("documents")
     
     async def store_short_term(self, key: str, data: Any, ttl: int = 3600) -> bool:
         """Store data in Redis (short-term memory)"""
+        if not self.is_initialized:
+            raise RuntimeError("MemoryService not initialized. Call initialize() first.")
+        
         try:
             if self.redis_client:
                 serialized_data = json.dumps(data, default=str)
                 await self.redis_client.setex(key, ttl, serialized_data)
-                print(f"📝 Stored in Redis: {key} (TTL: {ttl}s)")
+                logger.debug(f"Stored in Redis: {key} (TTL: {ttl}s)")
                 return True
             else:
                 # Fallback to in-memory storage
-                print(f"📝 Stored in memory: {key}")
+                self._memory_storage[key] = {
+                    "data": data,
+                    "expires_at": datetime.utcnow() + timedelta(seconds=ttl)
+                }
+                logger.debug(f"Stored in memory: {key}")
                 return True
             
         except Exception as e:
-            print(f"❌ Failed to store in short-term memory: {e}")
+            logger.error(f"Failed to store in short-term memory: {e}")
             return False
     
     async def get_short_term(self, key: str) -> Optional[Any]:
         """Retrieve data from Redis (short-term memory)"""
+        if not self.is_initialized:
+            raise RuntimeError("MemoryService not initialized. Call initialize() first.")
+        
         try:
             if self.redis_client:
                 data = await self.redis_client.get(key)
                 if data:
                     return json.loads(data)
+            else:
+                # Check in-memory storage
+                if key in self._memory_storage:
+                    item = self._memory_storage[key]
+                    if datetime.utcnow() < item["expires_at"]:
+                        return item["data"]
+                    else:
+                        # Remove expired item
+                        del self._memory_storage[key]
+            
             return None
             
         except Exception as e:
-            print(f"❌ Failed to retrieve from short-term memory: {e}")
+            logger.error(f"Failed to retrieve from short-term memory: {e}")
             return None
     
     async def delete_short_term(self, key: str) -> bool:
         """Delete data from Redis (short-term memory)"""
+        if not self.is_initialized:
+            raise RuntimeError("MemoryService not initialized. Call initialize() first.")
+        
         try:
             if self.redis_client:
                 await self.redis_client.delete(key)
-                print(f"🗑️ Deleted from Redis: {key}")
+                logger.debug(f"Deleted from Redis: {key}")
+            else:
+                # Remove from in-memory storage
+                if key in self._memory_storage:
+                    del self._memory_storage[key]
+                    logger.debug(f"Deleted from memory: {key}")
+            
             return True
             
         except Exception as e:
-            print(f"❌ Failed to delete from short-term memory: {e}")
+            logger.error(f"Failed to delete from short-term memory: {e}")
             return False
     
     async def store_long_term(self, collection: str, documents: List[Dict[str, Any]], metadata: Dict[str, Any] = None) -> bool:
         """Store documents in vector database (long-term memory)"""
+        if not self.is_initialized:
+            raise RuntimeError("MemoryService not initialized. Call initialize() first.")
+        
         try:
             if not documents:
                 return False
@@ -138,7 +204,8 @@ class MemoryService:
                 doc_metadata = {
                     "source": doc.get("source", "unknown"),
                     "type": doc.get("type", "document"),
-                    "created_at": datetime.now().isoformat(),
+                    "collection": collection,
+                    "created_at": datetime.utcnow().isoformat(),
                     **(metadata or {}),
                     **(doc.get("metadata", {}))
                 }
@@ -150,17 +217,28 @@ class MemoryService:
                     documents=texts,
                     metadatas=metadatas
                 )
-                print(f"📚 Stored {len(ids)} documents in ChromaDB: {collection}")
+                logger.info(f"Stored {len(ids)} documents in ChromaDB collection: {collection}")
+                
+                # Record metrics
+                self.monitor.record_performance_metric(
+                    "documents_stored",
+                    len(ids),
+                    {"collection": collection}
+                )
+                
                 return True
             
             return False
             
         except Exception as e:
-            print(f"❌ Failed to store in long-term memory: {e}")
+            logger.error(f"Failed to store in long-term memory: {e}")
             return False
     
     async def search_long_term(self, query: str, collection: str = None, k: int = 5, filter_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """Search documents in vector database (long-term memory)"""
+        if not self.is_initialized:
+            raise RuntimeError("MemoryService not initialized. Call initialize() first.")
+        
         try:
             if not query.strip():
                 return []
@@ -183,11 +261,19 @@ class MemoryService:
                         "id": results['ids'][0][i] if results['ids'] and results['ids'][0] else None
                     })
             
-            print(f"🔍 Searched ChromaDB for: '{query}' -> {len(formatted_results)} results")
+            logger.debug(f"Searched ChromaDB for: '{query}' -> {len(formatted_results)} results")
+            
+            # Record metrics
+            self.monitor.record_performance_metric(
+                "search_results",
+                len(formatted_results),
+                {"collection": collection or "default"}
+            )
+            
             return formatted_results
             
         except Exception as e:
-            print(f"❌ Failed to search long-term memory: {e}")
+            logger.error(f"Failed to search long-term memory: {e}")
             return []
     
     async def store_trace_context(self, trace_id: str, context: Dict[str, Any]) -> bool:
@@ -203,12 +289,12 @@ class MemoryService:
         try:
             # Create memory document
             memory_doc = {
-                "id": f"memory_{agent_id}_{datetime.now().timestamp()}",
+                "id": f"memory_{agent_id}_{datetime.utcnow().timestamp()}",
                 "content": json.dumps(memory_data),
                 "metadata": {
                     "agent_id": agent_id,
                     "memory_type": memory_type,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.utcnow().isoformat(),
                     "data_hash": hashlib.md5(json.dumps(memory_data, sort_keys=True).encode()).hexdigest()
                 }
             }
@@ -216,7 +302,7 @@ class MemoryService:
             return await self.store_long_term("agent_memories", [memory_doc])
             
         except Exception as e:
-            print(f"❌ Failed to store agent memory: {e}")
+            logger.error(f"Failed to store agent memory: {e}")
             return False
     
     async def search_agent_memory(self, agent_id: str, query: str, memory_type: str = None, k: int = 5) -> List[Dict[str, Any]]:
@@ -238,7 +324,7 @@ class MemoryService:
             return results
             
         except Exception as e:
-            print(f"❌ Failed to search agent memory: {e}")
+            logger.error(f"Failed to search agent memory: {e}")
             return []
     
     async def store_document_embeddings(self, document_id: str, text_chunks: List[str], metadata: Dict[str, Any] = None) -> bool:
@@ -260,7 +346,7 @@ class MemoryService:
             return await self.store_long_term("document_embeddings", documents)
             
         except Exception as e:
-            print(f"❌ Failed to store document embeddings: {e}")
+            logger.error(f"Failed to store document embeddings: {e}")
             return False
     
     async def search_similar_documents(self, query: str, document_type: str = None, k: int = 5) -> List[Dict[str, Any]]:
@@ -273,60 +359,89 @@ class MemoryService:
             return await self.search_long_term(query, "document_embeddings", k, filter_metadata)
             
         except Exception as e:
-            print(f"❌ Failed to search similar documents: {e}")
+            logger.error(f"Failed to search similar documents: {e}")
             return []
     
-    async def get_collection_stats(self, collection_name: str = "documents") -> Dict[str, Any]:
-        """Get statistics about a collection"""
+    async def get_collection_stats(self, collection_name: str = None) -> Dict[str, Any]:
+        """Get statistics about collections"""
+        if not self.is_initialized:
+            raise RuntimeError("MemoryService not initialized. Call initialize() first.")
+        
         try:
+            collection_name = collection_name or settings.CHROMA_COLLECTION_NAME
+            
             if self.vector_store:
                 count = self.vector_store.count()
                 return {
                     "collection_name": collection_name,
                     "document_count": count,
-                    "status": "active"
+                    "status": "active",
+                    "timestamp": datetime.utcnow().isoformat()
                 }
+            
             return {
                 "collection_name": collection_name,
                 "document_count": 0,
-                "status": "inactive"
+                "status": "inactive",
+                "timestamp": datetime.utcnow().isoformat()
             }
             
         except Exception as e:
-            print(f"❌ Failed to get collection stats: {e}")
+            logger.error(f"Failed to get collection stats: {e}")
             return {
                 "collection_name": collection_name,
                 "document_count": 0,
                 "status": "error",
-                "error": str(e)
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
             }
     
     async def cleanup_expired_data(self, max_age_hours: int = 24) -> int:
         """Clean up expired data from memory"""
+        if not self.is_initialized:
+            raise RuntimeError("MemoryService not initialized. Call initialize() first.")
+        
         try:
             cleaned_count = 0
+            
+            # Clean up in-memory storage
+            current_time = datetime.utcnow()
+            expired_keys = []
+            
+            for key, item in self._memory_storage.items():
+                if current_time > item["expires_at"]:
+                    expired_keys.append(key)
+            
+            for key in expired_keys:
+                del self._memory_storage[key]
+                cleaned_count += 1
             
             # Note: ChromaDB doesn't have built-in TTL, so we'd need to implement
             # custom cleanup logic based on metadata timestamps
             # For now, we'll just clean up Redis data
             
-            if self.redis_client:
-                # This is a simplified cleanup - in production you'd want more sophisticated logic
-                print(f"🧹 Cleanup completed: {cleaned_count} items removed")
-            
+            logger.info(f"Cleanup completed: {cleaned_count} items removed")
             return cleaned_count
             
         except Exception as e:
-            print(f"❌ Failed to cleanup expired data: {e}")
+            logger.error(f"Failed to cleanup expired data: {e}")
             return 0
     
     async def health_check(self) -> Dict[str, Any]:
         """Check health of memory services"""
+        if not self.is_initialized:
+            return {
+                "redis": "not_initialized",
+                "chromadb": "not_initialized",
+                "overall": "not_initialized"
+            }
+        
         try:
             health_status = {
                 "redis": "unknown",
                 "chromadb": "unknown",
-                "overall": "unknown"
+                "overall": "unknown",
+                "timestamp": datetime.utcnow().isoformat()
             }
             
             # Check Redis
@@ -334,7 +449,8 @@ class MemoryService:
                 try:
                     await self.redis_client.ping()
                     health_status["redis"] = "healthy"
-                except:
+                except Exception as e:
+                    logger.error(f"Redis health check failed: {e}")
                     health_status["redis"] = "unhealthy"
             else:
                 health_status["redis"] = "not_configured"
@@ -344,7 +460,8 @@ class MemoryService:
                 try:
                     self.vector_store.count()
                     health_status["chromadb"] = "healthy"
-                except:
+                except Exception as e:
+                    logger.error(f"ChromaDB health check failed: {e}")
                     health_status["chromadb"] = "unhealthy"
             else:
                 health_status["chromadb"] = "not_configured"
@@ -360,9 +477,46 @@ class MemoryService:
             return health_status
             
         except Exception as e:
+            logger.error(f"Memory service health check failed: {e}")
             return {
                 "redis": "error",
                 "chromadb": "error", 
                 "overall": "error",
-                "error": str(e)
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
             }
+    
+    async def get_status(self) -> Dict[str, Any]:
+        """Get comprehensive service status"""
+        return {
+            "initialized": self.is_initialized,
+            "redis_configured": self.redis_client is not None,
+            "chromadb_configured": self.vector_store is not None,
+            "health": await self.health_check(),
+            "collections": await self.get_collection_stats(),
+            "memory_storage_size": len(self._memory_storage)
+        }
+    
+    async def cleanup(self) -> None:
+        """Cleanup resources and connections"""
+        try:
+            logger.info("Cleaning up MemoryService...")
+            
+            # Close Redis connection
+            if self.redis_client:
+                await self.redis_client.close()
+                logger.info("Redis connection closed")
+            
+            # Clear in-memory storage
+            self._memory_storage.clear()
+            
+            # Clear ChromaDB references
+            self.vector_store = None
+            self.chroma_client = None
+            
+            self.is_initialized = False
+            logger.info("MemoryService cleanup completed")
+            
+        except Exception as e:
+            logger.error(f"MemoryService cleanup failed: {e}")
+            raise

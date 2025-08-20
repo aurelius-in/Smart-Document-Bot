@@ -1,5 +1,6 @@
 import json
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 from enum import Enum
@@ -9,6 +10,7 @@ from langchain.schema import HumanMessage, SystemMessage
 
 from .base import BaseAgent, Tool
 from ..models.base import AgentResult, AgentType, Document
+from ..core.config import settings
 from .ingestion import IngestionAgent
 from .classifier import ClassifierAgent
 from .entity import EntityAgent
@@ -16,6 +18,9 @@ from .risk import RiskAgent
 from .qa import QAAgent
 from .compare import CompareAgent
 from .audit import AuditAgent
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class WorkflowStage(Enum):
@@ -410,15 +415,23 @@ class OrchestratorAgent(BaseAgent):
             context = {
                 "document": document,
                 "goal": goal,
-                "orchestrator": self
+                "orchestrator": self,
+                "workflow_state": self.workflow_state
             }
             
-            # Execute agent
-            result = await agent.run(goal, context)
-            return result
+            # Execute agent with timeout
+            import asyncio
+            try:
+                result = await asyncio.wait_for(
+                    agent.run(goal, context),
+                    timeout=settings.AGENT_TIMEOUT
+                )
+                return result
+            except asyncio.TimeoutError:
+                raise Exception(f"Agent {agent_type} execution timed out after {settings.AGENT_TIMEOUT} seconds")
             
         except Exception as e:
-            print(f"Stage execution failed for {agent_type}: {str(e)}")
+            logger.error(f"Stage execution failed for {agent_type}: {str(e)}")
             return None
     
     def _calculate_confidence(self, execution_results: Dict, monitoring_result: Dict) -> float:

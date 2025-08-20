@@ -1,381 +1,318 @@
-import re
 import time
+import logging
 import json
-import uuid
-from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Callable, Dict, Any
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
-from fastapi import FastAPI
+from starlette.responses import JSONResponse
 
 from .config import settings
-from .monitoring import get_monitor
 
-# PII patterns for redaction
-PII_PATTERNS = [
-    # Email addresses
-    (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]'),
-    # Phone numbers (various formats)
-    (r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b', '[PHONE]'),
-    (r'\b\(\d{3}\)\s*\d{3}[-.]?\d{4}\b', '[PHONE]'),
-    # Social Security Numbers
-    (r'\b\d{3}-\d{2}-\d{4}\b', '[SSN]'),
-    # Credit Card Numbers (basic pattern)
-    (r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b', '[CREDIT_CARD]'),
-    # IP Addresses
-    (r'\b(?:\d{1,3}\.){3}\d{1,3}\b', '[IP_ADDRESS]'),
-    # Basic name patterns (consecutive capitalized words)
-    (r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', '[NAME]'),
-]
-
-
-class PIIRedactionMiddleware(BaseHTTPMiddleware):
-    """Middleware to redact PII from request/response data"""
-    
-    def __init__(self, app: FastAPI, enabled: bool = True):
-        super().__init__(app)
-        self.enabled = enabled
-        self.monitor = get_monitor()
-    
-    async def dispatch(self, request: Request, call_next):
-        if not self.enabled:
-            return await call_next(request)
-        
-        # Store original body for redaction
-        body = b""
-        if request.method in ["POST", "PUT", "PATCH"]:
-            body = await request.body()
-        
-        # Create new request with redacted body if needed
-        if body:
-            redacted_body = self._redact_pii(body.decode('utf-8', errors='ignore'))
-            # Note: In production, you might want to log the redacted version
-            # but pass the original to the application
-        
-        # Process the request
-        response = await call_next(request)
-        
-        # Redact response if needed (for logging purposes)
-        if hasattr(response, 'body'):
-            # This is a simplified approach - in production you'd want more sophisticated handling
-            pass
-        
-        return response
-    
-    def _redact_pii(self, text: str) -> str:
-        """Redact PII from text using regex patterns"""
-        redacted_text = text
-        
-        for pattern, replacement in PII_PATTERNS:
-            redacted_text = re.sub(pattern, replacement, redacted_text, flags=re.IGNORECASE)
-        
-        return redacted_text
-
-
-class AuditLogMiddleware(BaseHTTPMiddleware):
-    """Middleware to log API requests for audit purposes"""
-    
-    def __init__(self, app: FastAPI, enabled: bool = True):
-        super().__init__(app)
-        self.enabled = enabled
-        self.monitor = get_monitor()
-    
-    async def dispatch(self, request: Request, call_next):
-        if not self.enabled:
-            return await call_next(request)
-        
-        # Generate request ID for tracing
-        request_id = str(uuid.uuid4())
-        
-        # Extract request information
-        start_time = time.time()
-        client_ip = self._get_client_ip(request)
-        user_agent = request.headers.get("user-agent", "")
-        method = request.method
-        url = str(request.url)
-        
-        # Extract user information if available
-        user_id = None
-        if hasattr(request.state, 'user'):
-            user_id = request.state.user.get('id')
-        
-        # Log request start
-        self.monitor.log_info(
-            "audit_middleware",
-            f"API request started: {method} {url}",
-            {
-                "request_id": request_id,
-                "method": method,
-                "url": url,
-                "client_ip": client_ip,
-                "user_agent": user_agent,
-                "user_id": user_id
-            },
-            trace_id=request_id,
-            user_id=user_id
-        )
-        
-        # Process request
-        try:
-            response = await call_next(request)
-            
-            # Calculate response time
-            end_time = time.time()
-            response_time = end_time - start_time
-            
-            # Log successful request
-            self.monitor.log_info(
-                "audit_middleware",
-                f"API request completed: {method} {url} - {response.status_code}",
-                {
-                    "request_id": request_id,
-                    "method": method,
-                    "url": url,
-                    "status_code": response.status_code,
-                    "response_time": response_time,
-                    "client_ip": client_ip,
-                    "user_id": user_id
-                },
-                trace_id=request_id,
-                user_id=user_id
-            )
-            
-            # Add request ID to response headers
-            response.headers["X-Request-ID"] = request_id
-            
-            return response
-            
-        except Exception as e:
-            # Log failed request
-            end_time = time.time()
-            response_time = end_time - start_time
-            
-            self.monitor.log_error(
-                "audit_middleware",
-                f"API request failed: {method} {url}",
-                str(e),
-                trace_id=request_id,
-                user_id=user_id
-            )
-            
-            raise
-    
-    def _get_client_ip(self, request: Request) -> str:
-        """Extract client IP address from request"""
-        # Check for forwarded headers first
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
-        
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip
-        
-        # Fall back to direct client IP
-        if hasattr(request.client, 'host'):
-            return request.client.host
-        
-        return "unknown"
+logger = logging.getLogger(__name__)
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Middleware for detailed request/response logging"""
+    """Middleware for logging all incoming requests"""
     
-    def __init__(self, app: FastAPI, enabled: bool = True, log_bodies: bool = False):
-        super().__init__(app)
-        self.enabled = enabled
-        self.log_bodies = log_bodies
-        self.monitor = get_monitor()
-        
-        # Endpoints to exclude from detailed logging (to avoid noise)
-        self.exclude_paths = [
-            "/health",
-            "/metrics",
-            "/docs",
-            "/openapi.json",
-            "/favicon.ico"
-        ]
-    
-    async def dispatch(self, request: Request, call_next):
-        if not self.enabled:
-            return await call_next(request)
-        
-        # Skip logging for excluded paths
-        if any(request.url.path.startswith(path) for path in self.exclude_paths):
-            return await call_next(request)
-        
-        # Generate trace ID
-        trace_id = str(uuid.uuid4())
-        
-        # Extract request details
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.time()
-        method = request.method
-        url = str(request.url)
-        headers = dict(request.headers)
         
-        # Remove sensitive headers
-        sensitive_headers = ["authorization", "cookie", "x-api-key"]
-        filtered_headers = {
-            k: v if k.lower() not in sensitive_headers else "[REDACTED]"
-            for k, v in headers.items()
-        }
-        
-        # Log request body if enabled
-        request_body = None
-        if self.log_bodies and method in ["POST", "PUT", "PATCH"]:
-            try:
-                body = await request.body()
-                request_body = body.decode('utf-8', errors='ignore')[:1000]  # Limit size
-            except Exception:
-                request_body = "[ERROR_READING_BODY]"
-        
-        # Log request details
-        self.monitor.log_info(
-            "request_logging",
-            f"Incoming request: {method} {url}",
-            {
-                "trace_id": trace_id,
-                "method": method,
-                "url": url,
-                "headers": filtered_headers,
-                "body": request_body if self.log_bodies else None,
-                "content_length": headers.get("content-length"),
-                "content_type": headers.get("content-type")
-            },
-            trace_id=trace_id
+        # Log request
+        logger.info(
+            f"Request: {request.method} {request.url.path} - "
+            f"Client: {request.client.host if request.client else 'unknown'}"
         )
         
         # Process request
         try:
             response = await call_next(request)
             
-            # Calculate metrics
-            end_time = time.time()
-            response_time = end_time - start_time
+            # Calculate processing time
+            process_time = time.time() - start_time
             
-            # Log response details
-            self.monitor.log_info(
-                "request_logging",
-                f"Response: {method} {url} - {response.status_code}",
-                {
-                    "trace_id": trace_id,
-                    "status_code": response.status_code,
-                    "response_time": response_time,
-                    "response_headers": dict(response.headers) if hasattr(response, 'headers') else {}
-                },
-                trace_id=trace_id
+            # Log response
+            logger.info(
+                f"Response: {request.method} {request.url.path} - "
+                f"Status: {response.status_code} - "
+                f"Time: {process_time:.3f}s"
             )
             
-            # Add trace ID to response
-            response.headers["X-Trace-ID"] = trace_id
+            # Add processing time header
+            response.headers["X-Process-Time"] = str(process_time)
             
             return response
             
         except Exception as e:
             # Log error
-            end_time = time.time()
-            response_time = end_time - start_time
-            
-            self.monitor.log_error(
-                "request_logging",
-                f"Request error: {method} {url}",
-                str(e),
-                trace_id=trace_id
+            process_time = time.time() - start_time
+            logger.error(
+                f"Error: {request.method} {request.url.path} - "
+                f"Exception: {str(e)} - "
+                f"Time: {process_time:.3f}s"
             )
-            
             raise
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Middleware for adding security headers"""
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        response = await call_next(request)
+        
+        # Add security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        
+        # Add CSP header if not already present
+        if "Content-Security-Policy" not in response.headers:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: https:; "
+                "font-src 'self' data:; "
+                "connect-src 'self' ws: wss:;"
+            )
+        
+        return response
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Simple rate limiting middleware"""
+    """Middleware for rate limiting"""
     
-    def __init__(self, app: FastAPI, enabled: bool = True, requests_per_minute: int = 60):
+    def __init__(self, app, redis_client=None):
         super().__init__(app)
-        self.enabled = enabled
-        self.requests_per_minute = requests_per_minute
-        self.request_counts: Dict[str, List[float]] = {}
-        self.monitor = get_monitor()
+        self.redis_client = redis_client
     
-    async def dispatch(self, request: Request, call_next):
-        if not self.enabled:
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if not self.redis_client:
             return await call_next(request)
         
         # Get client identifier (IP address)
-        client_ip = self._get_client_ip(request)
-        current_time = time.time()
-        
-        # Clean old requests (older than 1 minute)
-        if client_ip in self.request_counts:
-            self.request_counts[client_ip] = [
-                req_time for req_time in self.request_counts[client_ip]
-                if current_time - req_time < 60
-            ]
-        else:
-            self.request_counts[client_ip] = []
+        client_ip = request.client.host if request.client else "unknown"
         
         # Check rate limit
-        if len(self.request_counts[client_ip]) >= self.requests_per_minute:
-            self.monitor.log_warning(
-                "rate_limit",
-                f"Rate limit exceeded for IP: {client_ip}",
-                {
-                    "client_ip": client_ip,
-                    "requests_in_window": len(self.request_counts[client_ip]),
-                    "limit": self.requests_per_minute
-                }
+        try:
+            key = f"rate_limit:{client_ip}"
+            current_requests = self.redis_client.get(key)
+            
+            if current_requests is None:
+                self.redis_client.setex(key, settings.RATE_LIMIT_WINDOW, 1)
+            else:
+                current_requests = int(current_requests)
+                if current_requests >= settings.RATE_LIMIT_REQUESTS:
+                    logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "error": "Rate limit exceeded",
+                            "message": f"Too many requests. Limit: {settings.RATE_LIMIT_REQUESTS} per {settings.RATE_LIMIT_WINDOW} seconds"
+                        }
+                    )
+                
+                self.redis_client.incr(key)
+                
+        except Exception as e:
+            logger.error(f"Rate limit check failed: {e}")
+            # Continue without rate limiting if Redis fails
+        
+        return await call_next(request)
+
+
+class PIIRedactionMiddleware(BaseHTTPMiddleware):
+    """Middleware for redacting PII from logs"""
+    
+    def __init__(self, app):
+        super().__init__(app)
+        self.pii_patterns = [
+            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Email
+            r'\b\d{3}-\d{2}-\d{4}\b',  # SSN
+            r'\b\d{4}-\d{4}-\d{4}-\d{4}\b',  # Credit card
+            r'\b\d{10,11}\b',  # Phone numbers
+        ]
+    
+    def redact_pii(self, text: str) -> str:
+        """Redact PII from text"""
+        import re
+        for pattern in self.pii_patterns:
+            text = re.sub(pattern, '[REDACTED]', text)
+        return text
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Redact PII from request body if present
+        if request.method in ["POST", "PUT", "PATCH"]:
+            try:
+                body = await request.body()
+                if body:
+                    body_str = body.decode()
+                    redacted_body = self.redact_pii(body_str)
+                    # Create new request with redacted body
+                    request._body = redacted_body.encode()
+            except Exception as e:
+                logger.error(f"PII redaction failed: {e}")
+        
+        return await call_next(request)
+
+
+class AuditLogMiddleware(BaseHTTPMiddleware):
+    """Middleware for audit logging"""
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Skip audit logging for health checks and static files
+        if request.url.path in ["/health", "/health/detailed", "/docs", "/redoc"]:
+            return await call_next(request)
+        
+        # Get user info if authenticated
+        user_id = None
+        user_email = None
+        try:
+            # This would be set by authentication middleware
+            user_id = getattr(request.state, "user_id", None)
+            user_email = getattr(request.state, "user_email", None)
+        except Exception:
+            pass
+        
+        # Log audit event
+        audit_event = {
+            "timestamp": time.time(),
+            "method": request.method,
+            "path": request.url.path,
+            "query_params": dict(request.query_params),
+            "client_ip": request.client.host if request.client else "unknown",
+            "user_agent": request.headers.get("user-agent", ""),
+            "user_id": user_id,
+            "user_email": user_email,
+        }
+        
+        logger.info(f"AUDIT: {json.dumps(audit_event)}")
+        
+        return await call_next(request)
+
+
+class ErrorHandlingMiddleware(BaseHTTPMiddleware):
+    """Middleware for handling and logging errors"""
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        try:
+            return await call_next(request)
+        except Exception as e:
+            # Log the error
+            logger.error(
+                f"Unhandled exception in {request.method} {request.url.path}: {str(e)}",
+                exc_info=True
             )
             
-            return Response(
-                content=json.dumps({"error": "Rate limit exceeded"}),
-                status_code=429,
-                headers={"Content-Type": "application/json"}
+            # Return error response
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": "Internal server error",
+                    "message": "An unexpected error occurred",
+                    "path": request.url.path
+                }
             )
-        
-        # Add current request to count
-        self.request_counts[client_ip].append(current_time)
+
+
+class MetricsMiddleware(BaseHTTPMiddleware):
+    """Middleware for collecting metrics"""
+    
+    def __init__(self, app, metrics_collector=None):
+        super().__init__(app)
+        self.metrics_collector = metrics_collector
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        start_time = time.time()
         
         # Process request
-        return await call_next(request)
-    
-    def _get_client_ip(self, request: Request) -> str:
-        """Extract client IP address from request"""
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
+        response = await call_next(request)
         
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip
+        # Calculate metrics
+        process_time = time.time() - start_time
         
-        if hasattr(request.client, 'host'):
-            return request.client.host
+        # Record metrics if collector is available
+        if self.metrics_collector:
+            try:
+                self.metrics_collector.record_request(
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=response.status_code,
+                    duration=process_time
+                )
+            except Exception as e:
+                logger.error(f"Failed to record metrics: {e}")
         
-        return "unknown"
+        return response
 
 
-def setup_middleware(app: FastAPI):
-    """Setup all middleware for the application"""
+def setup_middleware(app: FastAPI) -> None:
+    """Setup all middleware for the FastAPI application"""
     
-    # Add rate limiting
+    # Add CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=settings.ALLOWED_METHODS,
+        allow_headers=settings.ALLOWED_HEADERS,
+    )
+    
+    # Add trusted host middleware
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=["*"]  # Configure based on your deployment
+    )
+    
+    # Add custom middleware in order
+    app.add_middleware(ErrorHandlingMiddleware)
+    app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(PIIRedactionMiddleware)
+    app.add_middleware(AuditLogMiddleware)
+    
+    # Add rate limiting middleware if Redis is available
+    try:
+        import redis
+        redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis_client.ping()  # Test connection
+        app.add_middleware(RateLimitMiddleware, redis_client=redis_client)
+        logger.info("Rate limiting middleware enabled")
+    except Exception as e:
+        logger.warning(f"Rate limiting middleware disabled: {e}")
+    
+    # Add metrics middleware if monitoring is enabled
     if settings.ENABLE_MONITORING:
-        app.add_middleware(RateLimitMiddleware, enabled=True, requests_per_minute=120)
+        try:
+            from .monitoring import MetricsCollector
+            metrics_collector = MetricsCollector()
+            app.add_middleware(MetricsMiddleware, metrics_collector=metrics_collector)
+            logger.info("Metrics middleware enabled")
+        except Exception as e:
+            logger.warning(f"Metrics middleware disabled: {e}")
     
-    # Add request logging
-    app.add_middleware(
-        RequestLoggingMiddleware, 
-        enabled=settings.ENABLE_MONITORING,
-        log_bodies=settings.DEBUG
-    )
-    
-    # Add audit logging
-    app.add_middleware(
-        AuditLogMiddleware,
-        enabled=settings.AUDIT_ENABLED
-    )
-    
-    # Add PII redaction
-    app.add_middleware(
-        PIIRedactionMiddleware,
-        enabled=True
-    )
+    logger.info("Middleware setup completed")
+
+
+def get_request_info(request: Request) -> Dict[str, Any]:
+    """Extract request information for logging"""
+    return {
+        "method": request.method,
+        "url": str(request.url),
+        "path": request.url.path,
+        "query_params": dict(request.query_params),
+        "headers": dict(request.headers),
+        "client_ip": request.client.host if request.client else "unknown",
+        "user_agent": request.headers.get("user-agent", ""),
+    }
+
+
+def get_response_info(response: Response) -> Dict[str, Any]:
+    """Extract response information for logging"""
+    return {
+        "status_code": response.status_code,
+        "headers": dict(response.headers),
+    }
