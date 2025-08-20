@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -49,7 +49,6 @@ import {
   Clear as ClearIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { toast } from 'react-hot-toast';
 import apiService, { AuditEvent } from '../services/apiService';
 
@@ -237,7 +236,7 @@ const AuditTrailPage: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-        AI Document Agent - Audit Trail
+        Audit Trail
       </Typography>
 
       <Grid container spacing={3}>

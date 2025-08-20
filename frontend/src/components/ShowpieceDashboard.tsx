@@ -619,7 +619,7 @@ This Agreement shall be governed by the laws of the State of New York.`,
         return (
           <Box>
             <Typography variant="h4" gutterBottom>
-              Agent Trace Visualization
+              Execution Trace
             </Typography>
             <AgentTraceVisualization
               traceId="demo-trace-1"

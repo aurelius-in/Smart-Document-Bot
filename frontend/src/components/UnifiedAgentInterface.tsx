@@ -382,7 +382,7 @@ const UnifiedAgentInterface: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h5" component="h2" gutterBottom>
-        AI Document Agent Interface
+        aiDa Interface
       </Typography>
 
       {/* Status Overview */}

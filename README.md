@@ -65,7 +65,7 @@ The platform consists of:
 
 4. **Access the application**
    - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8001
+   - Backend API: http://localhost:8000
 
 ## Demo Mode
 
@@ -96,7 +96,7 @@ The AI Document Agent platform uses a sophisticated multi-agent system:
 
 The application can be configured through environment variables:
 
-- `REACT_APP_API_BASE_URL`: Backend API URL (default: http://localhost:8001)
+- `REACT_APP_API_BASE_URL`: Backend API URL (default: http://localhost:8000)
 - `OPENAI_API_KEY`: OpenAI API key for AI agent functionality
 - `DATABASE_URL`: PostgreSQL database connection string
 
