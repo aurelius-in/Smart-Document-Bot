@@ -1,6 +1,6 @@
 // Configuration for the AI Document Agent frontend
 
-export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001';
+export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 export const CONFIG = {
   API_BASE_URL,

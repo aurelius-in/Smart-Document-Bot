@@ -1,102 +1,102 @@
 #!/usr/bin/env python3
 """
-Simple HTTP server for AI Document Agent demo
+Simple server launcher for Smart Document Bot
+This script provides an easy way to start the full FastAPI application
 """
 
-import json
-import http.server
-import socketserver
-from urllib.parse import urlparse, parse_qs
-from datetime import datetime
+import os
+import sys
+import uvicorn
+import argparse
+from pathlib import Path
 
-class AIDocumentAgentHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            response = {
-                "message": "AI Document Agent API",
-                "version": "1.0.0",
-                "status": "running",
-                "endpoints": {
-                    "health": "/health",
-                    "status": "/api/v1/status",
-                    "demo": "/api/v1/demo"
-                }
-            }
-            self.wfile.write(json.dumps(response, indent=2).encode())
-        elif self.path == '/health':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            response = {
-                "status": "healthy",
-                "timestamp": datetime.now().isoformat(),
-                "service": "AI Document Agent"
-            }
-            self.wfile.write(json.dumps(response, indent=2).encode())
-        elif self.path == '/api/v1/status':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            response = {
-                "service": "AI Document Agent",
-                "version": "1.0.0",
-                "status": "operational",
-                "agents": {
-                    "orchestrator": "active",
-                    "ingestion": "active", 
-                    "classifier": "active",
-                    "entity": "active",
-                    "risk": "active",
-                    "qa": "active"
-                },
-                "timestamp": datetime.now().isoformat()
-            }
-            self.wfile.write(json.dumps(response, indent=2).encode())
-        elif self.path == '/api/v1/demo':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            response = {
-                "demo": "AI Document Agent Demo",
-                "description": "Interactive demonstration of AI Document Agent capabilities",
-                "features": [
-                    "Document processing pipeline",
-                    "Entity extraction and analysis",
-                    "Risk assessment and compliance",
-                    "Interactive Q&A interface",
-                    "Real-time agent monitoring"
-                ],
-                "status": "ready"
-            }
-            self.wfile.write(json.dumps(response, indent=2).encode())
-        else:
-            super().do_GET()
+# Add the backend directory to Python path
+backend_dir = Path(__file__).parent / "backend"
+sys.path.insert(0, str(backend_dir))
+
+def run_server(host="0.0.0.0", port=8000, reload=False, workers=1):
+    """Run the FastAPI server"""
     
-    def do_OPTIONS(self):
-        """Handle CORS preflight requests"""
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+    print("🚀 Starting Smart Document Bot API Server...")
+    print(f"📍 Server will be available at: http://{host}:{port}")
+    print(f"📋 API Documentation: http://{host}:{port}/docs")
+    print(f"🔍 Health Check: http://{host}:{port}/health")
+    print(f"🛑 Press Ctrl+C to stop the server")
+    print("-" * 50)
+    
+    try:
+        # Import and run the FastAPI app
+        uvicorn.run(
+            "app.main:app",
+            host=host,
+            port=port,
+            reload=reload,
+            workers=workers if not reload else 1,
+            log_level="info",
+            access_log=True,
+            reload_dirs=["backend/app"] if reload else None
+        )
+    except KeyboardInterrupt:
+        print(f"\n🛑 Server stopped by user")
+    except Exception as e:
+        print(f"❌ Server failed to start: {e}")
+        sys.exit(1)
 
-def run_server(port=8000):
-    """Run the HTTP server"""
-    with socketserver.TCPServer(("", port), AIDocumentAgentHandler) as httpd:
-        print("🚀 AI Document Agent API running on http://localhost:8000")
-        print("📋 Available endpoints:")
-        print("   - http://localhost:8000/")
-        print("   - http://localhost:8000/health")
-        print("   - http://localhost:8000/api/v1/status")
-        print("   - http://localhost:8000/api/v1/demo")
-        print("🛑 Press Ctrl+C to stop the server")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print(f"\n🛑 Server stopped")
+
+def main():
+    """Main entry point"""
+    parser = argparse.ArgumentParser(description="Smart Document Bot API Server")
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host to bind the server to (default: 0.0.0.0)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind the server to (default: 8000)"
+    )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Enable auto-reload for development"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of worker processes (default: 1)"
+    )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Development mode (enables reload and sets DEBUG=True)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Set environment variables for development
+    if args.dev:
+        os.environ["DEBUG"] = "true"
+        os.environ["LOG_LEVEL"] = "DEBUG"
+        args.reload = True
+        print("🔧 Development mode enabled")
+    
+    # Check if required directories exist
+    if not backend_dir.exists():
+        print(f"❌ Backend directory not found: {backend_dir}")
+        print("Make sure you're running this script from the project root directory")
+        sys.exit(1)
+    
+    # Run the server
+    run_server(
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        workers=args.workers
+    )
+
 
 if __name__ == "__main__":
-    run_server(8000)
+    main()

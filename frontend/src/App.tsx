@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { Box, AppBar, Toolbar, Typography, IconButton, Drawer, List, ListItem, ListItemIcon, ListItemText, Chip, useTheme as useMuiTheme } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, IconButton, Drawer, List, ListItem, ListItemIcon, ListItemText, Chip } from '@mui/material';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import {
   Menu,
   Dashboard,
   Upload,
   Compare,
-  Timeline,
   Analytics,
   Chat,
   Settings,
@@ -15,19 +16,14 @@ import {
   Share,
   DarkMode,
   LightMode,
-  Business,
   Security,
-  Assessment,
-  Help,
-  Description,
-  AutoAwesome,
   Visibility,
   RecordVoiceOver
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Import the theme provider
-import { ThemeProvider } from './contexts/ThemeContext';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 // Import pages
 import DashboardPage from './pages/DashboardPage';
@@ -50,7 +46,6 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { darkMode, toggleDarkMode } = useTheme();
-  const muiTheme = useMuiTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -382,47 +377,49 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <Router>
-        <MainLayout>
-          <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/upload" element={<UploadPage />} />
-            <Route path="/compare" element={<ComparePage />} />
-            <Route path="/traces" element={<AgentTracePage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/qa" element={<QAPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/viewer" element={<DocumentViewerPage />} />
-            <Route path="/audit" element={<AuditTrailPage />} />
-            <Route path="/login" element={<LoginPage />} />
-          </Routes>
-        </MainLayout>
-      </Router>
-      
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-          },
-          success: {
-            duration: 3000,
-            iconTheme: {
-              primary: '#4caf50',
-              secondary: '#fff',
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <Router>
+          <MainLayout>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/upload" element={<UploadPage />} />
+              <Route path="/compare" element={<ComparePage />} />
+              <Route path="/traces" element={<AgentTracePage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
+              <Route path="/qa" element={<QAPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/viewer" element={<DocumentViewerPage />} />
+              <Route path="/audit" element={<AuditTrailPage />} />
+              <Route path="/login" element={<LoginPage />} />
+            </Routes>
+          </MainLayout>
+        </Router>
+        
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: '#363636',
+              color: '#fff',
             },
-          },
-          error: {
-            duration: 5000,
-            iconTheme: {
-              primary: '#f44336',
-              secondary: '#fff',
+            success: {
+              duration: 3000,
+              iconTheme: {
+                primary: '#4caf50',
+                secondary: '#fff',
+              },
             },
-          },
-        }}
-      />
+            error: {
+              duration: 5000,
+              iconTheme: {
+                primary: '#f44336',
+                secondary: '#fff',
+              },
+            },
+          }}
+        />
+      </LocalizationProvider>
     </ThemeProvider>
   );
 };

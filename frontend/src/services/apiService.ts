@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { toast } from 'react-hot-toast';
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const API_TIMEOUT = 30000; // 30 seconds
 
 // API Response Types
@@ -402,7 +402,7 @@ class ApiService {
 
   // WebSocket connection for real-time updates
   createWebSocketConnection(traceId?: string): WebSocket {
-    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8001';
+    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
     const url = traceId ? `${wsUrl}/ws/traces/${traceId}` : `${wsUrl}/ws`;
     
     const ws = new WebSocket(url);

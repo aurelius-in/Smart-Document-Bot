@@ -651,3 +651,76 @@ def log_workflow_stage_completion(workflow_id: str, stage_name: str, success: bo
             },
             trace_id
         )
+
+
+def setup_monitoring():
+    """Setup monitoring and observability"""
+    try:
+        # Setup logging
+        setup_logging()
+        
+        # Initialize monitoring
+        monitor.log_info("monitoring", "Monitoring system initialized")
+        
+        # Setup Prometheus metrics endpoint if enabled
+        if settings.ENABLE_MONITORING:
+            monitor.log_info("monitoring", "Metrics collection enabled")
+        
+        print("✅ Monitoring setup complete")
+        
+    except Exception as e:
+        print(f"⚠️ Monitoring setup failed: {e}")
+
+
+def instrument_fastapi(app):
+    """Instrument FastAPI application with monitoring"""
+    try:
+        from fastapi import Request, Response
+        import time
+        
+        @app.middleware("http")
+        async def monitoring_middleware(request: Request, call_next):
+            start_time = time.time()
+            
+            # Process request
+            response = await call_next(request)
+            
+            # Calculate metrics
+            process_time = time.time() - start_time
+            
+            # Record API metrics
+            monitor.metrics_collector.add_metric(Metric(
+                name="http_request_duration",
+                value=process_time,
+                metric_type=MetricType.HISTOGRAM,
+                labels={
+                    "method": request.method,
+                    "endpoint": str(request.url.path),
+                    "status_code": str(response.status_code)
+                },
+                timestamp=datetime.utcnow(),
+                description="HTTP request duration"
+            ))
+            
+            monitor.metrics_collector.add_metric(Metric(
+                name="http_requests_total",
+                value=1,
+                metric_type=MetricType.COUNTER,
+                labels={
+                    "method": request.method,
+                    "endpoint": str(request.url.path),
+                    "status_code": str(response.status_code)
+                },
+                timestamp=datetime.utcnow(),
+                description="Total HTTP requests"
+            ))
+            
+            # Add response time header
+            response.headers["X-Process-Time"] = str(process_time)
+            
+            return response
+        
+        monitor.log_info("monitoring", "FastAPI instrumentation complete")
+        
+    except Exception as e:
+        monitor.log_error("monitoring", "FastAPI instrumentation failed", str(e))
