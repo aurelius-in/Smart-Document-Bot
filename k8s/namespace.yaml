@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-document-agent
+  labels:
+    name: ai-document-agent
+    app: smart-doc-bot
+    environment: production
+  annotations:
+    description: "AI Document Agent - Enterprise Document Intelligence Platform"
+    owner: "ai-document-agent-team"
+    cost-center: "engineering"

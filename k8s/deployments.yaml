@@ -1,0 +1,288 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: ai-document-agent
+  labels:
+    app: smart-doc-bot
+    component: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: smart-doc-bot
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: smart-doc-bot
+        component: backend
+    spec:
+      containers:
+      - name: backend
+        image: smart-doc-bot-backend:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-document-agent-secrets
+              key: secret-key
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-document-agent-secrets
+              key: jwt-secret-key
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-document-agent-secrets
+              key: openai-api-key
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-document-agent-secrets
+              key: anthropic-api-key
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ai-document-agent-secrets
+              key: database-password
+        envFrom:
+        - configMapRef:
+            name: ai-document-agent-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: uploads
+          mountPath: /app/uploads
+        - name: chroma-db
+          mountPath: /app/chroma_db
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: uploads
+        persistentVolumeClaim:
+          claimName: uploads-pvc
+      - name: chroma-db
+        persistentVolumeClaim:
+          claimName: chroma-db-pvc
+      - name: logs
+        persistentVolumeClaim:
+          claimName: logs-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: ai-document-agent
+  labels:
+    app: smart-doc-bot
+    component: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: smart-doc-bot
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: smart-doc-bot
+        component: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: smart-doc-bot-frontend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: REACT_APP_API_URL
+          value: "https://api.smartdocbot.com"
+        - name: REACT_APP_ENVIRONMENT
+          value: "production"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: ai-document-agent
+  labels:
+    app: smart-doc-bot
+    component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smart-doc-bot
+      component: database
+  template:
+    metadata:
+      labels:
+        app: smart-doc-bot
+        component: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: "smart_doc_bot"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ai-document-agent-secrets
+              key: database-password
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: init-script
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+      - name: init-script
+        configMapRef:
+          name: ai-document-agent-init-db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: ai-document-agent
+  labels:
+    app: smart-doc-bot
+    component: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smart-doc-bot
+      component: cache
+  template:
+    metadata:
+      labels:
+        app: smart-doc-bot
+        component: cache
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        command:
+        - redis-server
+        - --appendonly
+        - yes
+        - --maxmemory
+        - 256mb
+        - --maxmemory-policy
+        - allkeys-lru
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: ai-document-agent
+  labels:
+    app: smart-doc-bot
+    component: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: smart-doc-bot
+      component: ingress
+  template:
+    metadata:
+      labels:
+        app: smart-doc-bot
+        component: ingress
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: nginx-ssl
+          mountPath: /etc/nginx/ssl
+        - name: nginx-logs
+          mountPath: /var/log/nginx
+      volumes:
+      - name: nginx-config
+        configMapRef:
+          name: ai-document-agent-nginx-config
+      - name: nginx-ssl
+        secretRef:
+          name: ai-document-agent-tls
+      - name: nginx-logs
+        persistentVolumeClaim:
+          claimName: logs-pvc

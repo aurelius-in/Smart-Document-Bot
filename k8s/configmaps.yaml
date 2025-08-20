@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-document-agent-config
+  namespace: ai-document-agent
+data:
+  # Application Configuration
+  APP_NAME: "AI Document Agent"
+  APP_VERSION: "1.0.0"
+  DEBUG: "false"
+  LOG_LEVEL: "INFO"
+  ENVIRONMENT: "production"
+  
+  # Server Configuration
+  HOST: "0.0.0.0"
+  PORT: "8000"
+  WORKER_PROCESSES: "4"
+  MAX_CONCURRENT_REQUESTS: "100"
+  
+  # Database Configuration
+  DATABASE_URL: "postgresql://postgres:$(DATABASE_PASSWORD)@postgres:5432/smart_doc_bot"
+  DATABASE_POOL_SIZE: "10"
+  DATABASE_MAX_OVERFLOW: "20"
+  
+  # Redis Configuration
+  REDIS_URL: "redis://redis:6379/0"
+  REDIS_MAX_CONNECTIONS: "10"
+  
+  # ChromaDB Configuration
+  CHROMA_PERSIST_DIRECTORY: "/app/chroma_db"
+  CHROMA_COLLECTION_NAME: "documents"
+  
+  # AI/ML Configuration
+  OPENAI_MODEL: "gpt-4"
+  OPENAI_MAX_TOKENS: "4000"
+  OPENAI_TEMPERATURE: "0.1"
+  AGENT_TIMEOUT: "300"
+  AGENT_MAX_RETRIES: "3"
+  AGENT_CONCURRENT_LIMIT: "10"
+  
+  # Security Configuration
+  ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  RATE_LIMIT_REQUESTS: "1000"
+  RATE_LIMIT_WINDOW: "3600"
+  
+  # Monitoring Configuration
+  ENABLE_MONITORING: "true"
+  PROMETHEUS_PORT: "9090"
+  GRAFANA_PORT: "3001"
+  ELASTICSEARCH_ENABLED: "true"
+  JAEGER_ENABLED: "true"
+  
+  # Audit Configuration
+  AUDIT_LOG_ENABLED: "true"
+  AUDIT_LOG_RETENTION_DAYS: "90"
+  COMPLIANCE_SCAN_ENABLED: "true"
+  PII_REDACTION_ENABLED: "true"
+  
+  # Feature Flags
+  ENABLE_WEBSOCKETS: "true"
+  ENABLE_SSE: "true"
+  ENABLE_REAL_TIME_UPDATES: "true"
+  ENABLE_DOCUMENT_COMPARISON: "true"
+  ENABLE_QA_FEATURE: "true"
+  ENABLE_AUDIT_TRAIL: "true"
+  ENABLE_ANALYTICS: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-document-agent-nginx-config
+  namespace: ai-document-agent
+data:
+  nginx.conf: |
+    events {
+      worker_connections 1024;
+    }
+    
+    http {
+      upstream backend {
+        server backend:8000;
+      }
+      
+      upstream frontend {
+        server frontend:3000;
+      }
+      
+      server {
+        listen 80;
+        server_name localhost;
+        
+        location / {
+          proxy_pass http://frontend;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        
+        location /api/ {
+          proxy_pass http://backend;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        
+        location /health {
+          proxy_pass http://backend/health;
+        }
+      }
+    }
